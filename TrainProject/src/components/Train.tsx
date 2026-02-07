@@ -1,5 +1,6 @@
-import { useRef, useEffect, useMemo } from 'react'
+import { useRef, useEffect, Suspense } from 'react'
 import { useFrame } from '@react-three/fiber'
+import { useGLTF, Clone } from '@react-three/drei'
 import * as THREE from 'three'
 import { useGameStore } from '../store'
 import { getTrackInfo, TRACK_SEGMENTS } from './trackUtils'
@@ -10,6 +11,41 @@ interface TrainProps {
 }
 
 export const Train = ({ resetSignal, trainRef }: TrainProps) => {
+	const locomotive = useGLTF('/Train.glb')
+	const carriage = useGLTF('/train_carriage.glb')
+
+	const locomotiveScale = .0025
+	const carriageScale = .9
+	const locomotiveOffset: [number, number, number] = [-0.3, -2.4, 0]
+	const carriageOffset: [number, number, number] = [0, 0.15, 0]
+	const carriageSpacing = 18.5
+	const carriageCount = 4
+	const carriageHalfLength = carriageSpacing * 0.45
+	const locomotiveHalfLength = carriageSpacing * 0.5
+	const modelRotation: [number, number, number] = [0, Math.PI, 0]
+	const carriageRotation: [number, number, number] = [0, 1.57, 0]
+
+	const carriageRefs = useRef<Array<THREE.Group | null>>([])
+	const setCarriageRef = (index: number) => (node: THREE.Group | null) => {
+		carriageRefs.current[index] = node
+	}
+
+	const applyGroupOnTrack = (group: THREE.Group | null, dist: number, halfLength: number) => {
+		if (!group) return
+		const center = getTrackInfo(dist)
+		const front = getTrackInfo(dist + halfLength)
+		const rear = getTrackInfo(dist - halfLength)
+		const dx = front.x - rear.x
+		const dy = front.height - rear.height
+		const dz = front.z - rear.z
+		const yaw = Math.atan2(dx, dz)
+		const pitch = Math.atan2(dy, Math.hypot(dx, dz))
+
+		group.position.set(center.x, center.height, center.z)
+		group.rotation.set(0, yaw, 0)
+		group.rotateX(-pitch)
+	}
+
 	// Stan fizyki - referencje do zmiennych mutowalnych, aby uniknąć zbędnych re-renderów
 	const velocity = useRef(0)
 	const distance = useRef(0)
@@ -23,19 +59,35 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 	const updatePhysics = useGameStore(s => s.updatePhysics)
 	const updateForces = useGameStore(s => s.updateForces)
 
+	const startStationCenter = 20
+	const startTrainDistance = startStationCenter + carriageSpacing * 2
+
 	// Inicjalizacja pozycji pociągu
 	useEffect(() => {
-		// Startujemy na 33 metrze, aby wagon (znajdujący się -13m względem lokomotywy) idealnie wpasował się w peron na 20 metrze
-		distance.current = 33
+		// Startujemy tak, aby 3. wagon od końca stał na polowie dlugosci stacji (srodek peronu ~20m)
+		distance.current = startTrainDistance
 		velocity.current = 0
 		smoothedBrake.current = 0
 		if (trainRef.current) {
-			const info = getTrackInfo(33)
-			trainRef.current.position.set(info.x, info.height, info.z)
-			trainRef.current.rotation.set(0, info.heading, 0)
+			applyGroupOnTrack(trainRef.current, startTrainDistance, locomotiveHalfLength)
 		}
-		updatePhysics(0, mass, 33)
-	}, [resetSignal, mass, updatePhysics]) // trainRef is stable
+		updatePhysics(0, startTrainDistance)
+	}, [resetSignal])
+
+	useEffect(() => {
+		const enableShadows = (root: THREE.Object3D) => {
+			root.traverse(obj => {
+				const mesh = obj as THREE.Mesh
+				if (mesh.isMesh) {
+					mesh.castShadow = true
+					mesh.receiveShadow = true
+				}
+			})
+		}
+
+		enableShadows(locomotive.scene)
+		enableShadows(carriage.scene)
+	}, [locomotive, carriage])
 
 	useFrame((_, delta) => {
 		// ... existing physics loop ...
@@ -61,6 +113,7 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 			airResistance,
 			maxPower,
 			brakeForceMax,
+			brakeAdhesionCoeff,
 			extraFriction,
 			massMultiplier,
 			powerMultiplier,
@@ -88,11 +141,14 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 		const F_normal = m * g * Math.cos(angle)
 		const speedAbs = Math.abs(v)
 		const safeSpeed = Math.max(speedAbs, 1.0)
-		let F_drive = (throttle * maxPower * powerMultiplier) / safeSpeed
+		// Realistic: cut traction when brakes are applied
+		const effectiveThrottle = brake > 0 ? 0 : throttle
+		let F_drive = (effectiveThrottle * maxPower * powerMultiplier) / safeSpeed
 		const maxAdhesion = 0.3 * F_normal
 		if (F_drive > maxAdhesion) F_drive = maxAdhesion
 
-		const brakingForceMag = smoothedBrake.current * brakeForceMax
+		const brakeAdhesionMax = brakeAdhesionCoeff * F_normal
+		const brakingForceMag = Math.min(smoothedBrake.current * brakeForceMax, brakeAdhesionMax)
 
 		const airForceMag = 0.5 * airResistance * v * v
 		const F_air = -Math.sign(v) * airForceMag
@@ -146,12 +202,13 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 			velocity.current = 0
 		}
 
-		const newInfo = getTrackInfo(distance.current)
-		trainRef.current.position.set(newInfo.x, newInfo.height, newInfo.z)
-		trainRef.current.rotation.set(0, newInfo.heading, 0)
-		trainRef.current.rotateX(-newInfo.angle)
+		applyGroupOnTrack(trainRef.current, distance.current, locomotiveHalfLength)
+		for (let i = 0; i < carriageCount; i += 1) {
+			const carriageDist = distance.current - carriageSpacing * (i + 1)
+			applyGroupOnTrack(carriageRefs.current[i], carriageDist, carriageHalfLength)
+		}
 
-		updatePhysics(velocity.current, mass, distance.current)
+		updatePhysics(velocity.current, distance.current)
 		updateForces({
 			gravity: F_gravity,
 			friction: isStopped ? 0 : -Math.sign(v) * rollingResistanceMag,
@@ -162,272 +219,28 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 		})
 	})
 
-	// Elementy wizualne (Materiały i geometria)
-	const trainMaterial = useMemo(
-		() =>
-			new THREE.MeshStandardMaterial({
-				color: '#e67e22',
-				roughness: 0.2,
-				metalness: 0.6,
-			}),
-		[],
-	)
-
-	const cabMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#2c3e50', roughness: 0.7 }), [])
-	const wagonMaterial = useMemo(
-		() => new THREE.MeshStandardMaterial({ color: '#3498db', roughness: 0.3, metalness: 0.4 }),
-		[],
-	)
-
 	return (
-		<group ref={trainRef}>
-			{/* --- LOKOMOTYWA --- */}
-			{/* Główny korpus */}
-			{/* Kabina */}
-			{/* Przedni nos */}
-			{/* Komin */}
-			{/* Wskaźniki kół (proste prostopadłościany) */}
-			<mesh position={[0, 1.4, 0]} castShadow receiveShadow>
-				<boxGeometry args={[3, 2.2, 10]} />
-				<primitive object={trainMaterial} attach='material' />
-			</mesh>
-
-			<mesh position={[0, 2.5, 3]} castShadow receiveShadow>
-				<boxGeometry args={[3.1, 1.5, 2.5]} />
-				<primitive object={cabMaterial} attach='material' />
-			</mesh>
-
-			<mesh position={[0, 1.4, -4]} castShadow receiveShadow>
-				<boxGeometry args={[3, 1.5, 3]} />
-				<primitive object={trainMaterial} attach='material' />
-			</mesh>
-
-			<mesh position={[0, 3, -3]} castShadow receiveShadow>
-				<cylinderGeometry args={[0.4, 0.4, 1]} />
-				<meshStandardMaterial color='#111' />
-			</mesh>
-
-			<mesh position={[1.2, 0.3, 3]}>
-				<boxGeometry args={[0.3, 0.6, 2]} />
-				<meshStandardMaterial color='#111' />
-			</mesh>
-			<mesh position={[-1.2, 0.3, 3]}>
-				<boxGeometry args={[0.3, 0.6, 2]} />
-				<meshStandardMaterial color='#111' />
-			</mesh>
-
-			<mesh position={[1.2, 0.3, -3]}>
-				<boxGeometry args={[0.3, 0.6, 2]} />
-				<meshStandardMaterial color='#111' />
-			</mesh>
-			<mesh position={[-1.2, 0.3, -3]}>
-				<boxGeometry args={[0.3, 0.6, 2]} />
-				<meshStandardMaterial color='#111' />
-			</mesh>
-
-			{/* --- WAGON PASAŻERSKI --- */}
-			<group position={[0, 0, -13]}>
-				{/* Łącznik */}
-				<mesh position={[0, 1, 5.5]}>
-					<boxGeometry args={[0.5, 0.5, 1]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-
-				{/* Korpus wagonu */}
-				<mesh position={[0, 1.8, 0]} castShadow receiveShadow>
-					<boxGeometry args={[3.2, 2.8, 11]} />
-					<primitive object={wagonMaterial} attach='material' />
-				</mesh>
-
-				{/* Dach */}
-				{/* Obrót dachu, aby wyrównać z osią Z */}
-				{/* Uwaga: W Three.js walec jest wzdłuż osi Y. Chcemy go wzdłuż Z. Obrót X = PI/2. */}
-				<mesh position={[0, 3.3, 0]} castShadow>
-					<cylinderGeometry args={[1.7, 1.7, 11.2, 16, 1, false, 0, Math.PI]} />
-					<meshStandardMaterial color='#2c3e50' />
-				</mesh>
-
-				{/* Cylinder default is Y-up. Rotate X 90. */}
-
-				{/* But we need half cylinder. thetaLength=PI. */}
-				{/* Let's redo with a box or standard cylinder properly rotated. */}
-				{/* Actually just a slightly rounded top box is easier or full cylinder segment. */}
-
-				{/* Okna (proste czarne paski) */}
-				{/* Koła */}
-				<mesh position={[1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-				<mesh position={[-1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-
-				<mesh position={[1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
+		<>
+			<group ref={trainRef}>
+				<Suspense fallback={null}>
+					<group position={locomotiveOffset} rotation={modelRotation} scale={locomotiveScale}>
+						<primitive object={locomotive.scene} />
+					</group>
+				</Suspense>
 			</group>
 
-			{/* --- WAGON 2 --- */}
-			<group position={[0, 0, -26]}>
-				{/* Connector */}
-				<mesh position={[0, 1, 5.5]}>
-					<boxGeometry args={[0.5, 0.5, 1]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-
-				{/* Body */}
-				<mesh position={[0, 1.8, 0]} castShadow receiveShadow>
-					<boxGeometry args={[3.2, 2.8, 11]} />
-					<primitive object={wagonMaterial} attach='material' />
-				</mesh>
-
-				{/* Roof */}
-				<mesh position={[0, 3.3, 0]} castShadow>
-					<cylinderGeometry args={[1.7, 1.7, 11.2, 16, 1, false, 0, Math.PI]} />
-					<meshStandardMaterial color='#2c3e50' />
-				</mesh>
-
-				{/* Windows */}
-				<mesh position={[1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-				<mesh position={[-1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-
-				{/* Wheels */}
-				<mesh position={[1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-			</group>
-
-			{/* --- WAGON 3 --- */}
-			<group position={[0, 0, -39]}>
-				{/* Connector */}
-				<mesh position={[0, 1, 5.5]}>
-					<boxGeometry args={[0.5, 0.5, 1]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-
-				{/* Body */}
-				<mesh position={[0, 1.8, 0]} castShadow receiveShadow>
-					<boxGeometry args={[3.2, 2.8, 11]} />
-					<primitive object={wagonMaterial} attach='material' />
-				</mesh>
-
-				{/* Roof */}
-				<mesh position={[0, 3.3, 0]} castShadow>
-					<cylinderGeometry args={[1.7, 1.7, 11.2, 16, 1, false, 0, Math.PI]} />
-					<meshStandardMaterial color='#2c3e50' />
-				</mesh>
-
-				{/* Windows */}
-				<mesh position={[1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-				<mesh position={[-1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-
-				{/* Wheels */}
-				<mesh position={[1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-			</group>
-
-			{/* --- WAGON 4 --- */}
-			<group position={[0, 0, -52]}>
-				{/* Connector */}
-				<mesh position={[0, 1, 5.5]}>
-					<boxGeometry args={[0.5, 0.5, 1]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-
-				{/* Body */}
-				<mesh position={[0, 1.8, 0]} castShadow receiveShadow>
-					<boxGeometry args={[3.2, 2.8, 11]} />
-					<primitive object={wagonMaterial} attach='material' />
-				</mesh>
-
-				{/* Roof */}
-				<mesh position={[0, 3.3, 0]} castShadow>
-					<cylinderGeometry args={[1.7, 1.7, 11.2, 16, 1, false, 0, Math.PI]} />
-					<meshStandardMaterial color='#2c3e50' />
-				</mesh>
-
-				{/* Windows */}
-				<mesh position={[1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-				<mesh position={[-1.61, 2, 0]}>
-					<boxGeometry args={[0.1, 1, 9]} />
-					<meshStandardMaterial color='#111' roughness={0.1} />
-				</mesh>
-
-				{/* Wheels */}
-				<mesh position={[1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, 3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-				<mesh position={[-1.2, 0.3, -3.5]}>
-					<boxGeometry args={[0.3, 0.6, 2]} />
-					<meshStandardMaterial color='#111' />
-				</mesh>
-			</group>
-		</group>
+			{Array.from({ length: carriageCount }).map((_, index) => (
+				<group key={index} ref={setCarriageRef(index)}>
+					<Suspense fallback={null}>
+						<group position={carriageOffset} rotation={carriageRotation} scale={carriageScale}>
+							<Clone object={carriage.scene} />
+						</group>
+					</Suspense>
+				</group>
+			))}
+		</>
 	)
 }
+
+useGLTF.preload('/Train.glb')
+useGLTF.preload('/train_carriage.glb')

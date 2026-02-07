@@ -11,6 +11,8 @@ export const TrainState = {
 
 export type TrainStateType = (typeof TrainState)[keyof typeof TrainState]
 
+const BASE_TRAIN_MASS = 200000
+
 interface GameState {
 	trainState: TrainStateType
 	boardingStep: number
@@ -26,6 +28,7 @@ interface GameState {
 		airResistance: number
 		maxPower: number // Watts
 		brakeForceMax: number // Newtons
+		brakeAdhesionCoeff: number
 		extraFriction: number // Newtons (T+)
 		massMultiplier: number
 		powerMultiplier: number
@@ -46,7 +49,7 @@ interface GameState {
 	// Akcje (Actions)
 	setTrainState: (state: TrainStateType) => void
 	setCameraMode: (mode: 'FOLLOW' | 'FREECAM') => void
-	updatePhysics: (velocity: number, mass: number, distance: number) => void
+	updatePhysics: (velocity: number, distance: number) => void
 	updateForces: (forces: GameState['forceState']) => void
 	addToMass: (amount: number) => void
 	setBoardingStep: (step: number) => void
@@ -61,7 +64,7 @@ interface GameState {
 export const useGameStore = create<GameState>(set => ({
 	trainState: TrainState.BOARDING,
 	velocity: 0,
-	mass: 200000,
+	mass: BASE_TRAIN_MASS,
 	distance: 0,
 	totalDistance: 3500, // Safe estimate
 	boardingStep: 0,
@@ -70,10 +73,11 @@ export const useGameStore = create<GameState>(set => ({
 
 	// Domyślne parametry fizyczne
 	physicsParams: {
-		frictionCoefficient: 0.15,
+		frictionCoefficient: 0.002,
 		airResistance: 10.0, // Współczynnik oporu powietrza (~Rho * Cd * A)
 		maxPower: 40000000, // Moc maksymalna (40 MW) - skalowane dla masy 200t
 		brakeForceMax: 200000, // Maksymalna siła hamowania (200 kN)
+		brakeAdhesionCoeff: 0.2,
 		extraFriction: 0,
 		massMultiplier: 1.0,
 		powerMultiplier: 1.0,
@@ -92,7 +96,7 @@ export const useGameStore = create<GameState>(set => ({
 
 	setTrainState: state => set({ trainState: state }),
 	setCameraMode: mode => set({ cameraMode: mode }),
-	updatePhysics: (velocity, mass, distance) => set({ velocity, mass, distance }),
+	updatePhysics: (velocity, distance) => set({ velocity, distance }),
 	updateForces: forces => set({ forceState: forces }),
 	addToMass: (amount: number) => set(state => ({ mass: state.mass + amount })),
 	setBoardingStep: (step: number) => set({ boardingStep: step }),
@@ -117,7 +121,7 @@ export const useGameStore = create<GameState>(set => ({
 			velocity: 0,
 			distance: 0,
 			resetSignal: state.resetSignal + 1,
-			mass: 10000, // Reset masy do samej lokomotywy (pasażerowie dodadzą swoją masę)
+			mass: BASE_TRAIN_MASS,
 			throttle: 0,
 			brake: 0,
 			forceState: {

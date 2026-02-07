@@ -118,19 +118,18 @@ export const Passengers = () => {
 	const resetSignal = useGameStore(s => s.resetSignal)
 
 	// STACJA POCZĄTKOWA: Krynica Zdrój
-	// Pociąg stoi środkiem na 33m, wagon zaczyna się ok 13m wcześniej (20m).
-	// Pasażerowie ustawieni wzdłuż peronu w okolicach wagonu.
+	// Pasażerowie ustawieni wzdłuż peronu w okolicach 3. wagonu od końca (srodek stacji ~20m).
 	const startPassengersData = useMemo(
 		() => [
-			{ name: 'Thomos', dist: 5, offset: 6, color: '#3b82f6', weight: 74 },
-			{ name: 'Sebastian', dist: 7, offset: 6, color: '#ef4444', weight: 71 },
-			{ name: 'Rimald', dist: 9, offset: 6.2, color: '#f59e0b', weight: 80 },
-			{ name: 'K_vanSant', dist: 11, offset: 6.5, color: '#10b981', weight: 500 },
+			{ name: 'Thomos', dist: 12, offset: 6, color: '#3b82f6', weight: 74 },
+			{ name: 'Sebastian', dist: 14, offset: 6, color: '#ef4444', weight: 71 },
+			{ name: 'Rimald', dist: 16, offset: 6.2, color: '#f59e0b', weight: 80 },
+			{ name: 'K_vanSant', dist: 18, offset: 6.5, color: '#10b981', weight: 500 },
 			// Passengers moved from Nowy Sącz to Krynica
-			{ name: 'Paweł SZ', dist: 4, offset: 6, color: '#8b5cf6', weight: 87 },
-			{ name: 'Deltsaber', dist: 6, offset: 6.5, color: '#ec4899', weight: 70 },
-			{ name: 'Stefankus', dist: 8, offset: 6, color: '#06b6d4', weight: 92 },
-			{ name: 'victoria21', dist: 10, offset: 6.2, color: '#a855f7', weight: 4321 },
+			{ name: 'Paweł SZ', dist: 22, offset: 6, color: '#8b5cf6', weight: 87 },
+			{ name: 'Deltsaber', dist: 24, offset: 6.5, color: '#ec4899', weight: 70 },
+			{ name: 'Stefankus', dist: 26, offset: 6, color: '#06b6d4', weight: 92 },
+			{ name: 'victoria21', dist: 28, offset: 6.2, color: '#a855f7', weight: 4321 },
 		],
 		[],
 	)
@@ -195,6 +194,7 @@ export const Passengers = () => {
 						visible={isVisible}
 						resetSignal={resetSignal}
 						onFinishMove={() => {
+							if (useGameStore.getState().resetSignal !== resetSignal) return
 							if (isBoarding) {
 								addToMass(p.weight)
 								const nextStep = boardingStep + 1
@@ -262,6 +262,7 @@ export const Passengers = () => {
 						visible={isVisible}
 						resetSignal={resetSignal}
 						onFinishMove={() => {
+							if (useGameStore.getState().resetSignal !== resetSignal) return
 							if (isDeboarding) {
 								addToMass(-p.weight)
 								// Increment boarding step

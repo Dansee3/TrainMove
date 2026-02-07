@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import * as THREE from 'three'
 import { getTrackInfo } from './trackUtils'
 import { getNoiseHeight } from '../utils/noise'
 import { getRiverCenterX, STATION_DEFS } from './worldConfig'
@@ -99,19 +100,19 @@ const generateAnimals = (): Animal[] => {
 
 	// 1. SARNY (Roe Deer) - Łąki i tereny otwarte (Niskie Z)
 	// Generujemy około 12 stad
-	for (let i = 0; i < 35; i++) {
+	for (let i = 0; i < 15; i++) {
 		spawnHerd('roe', [4, 7], 100, 1600, 30, 180)
 	}
 
 	// 2. JELENIE (Red Deer) - Lasy i wzgórza (Średnie Z)
 	// Generujemy 10 stad
-	for (let i = 0; i < 35; i++) {
+	for (let i = 0; i < 15; i++) {
 		spawnHerd('red', [4, 6], 1800, 3800, 50, 250)
 	}
 
 	// 3. DZIKI (Wild Boar) - Okolice rzeki i koniec mapy (Wysokie Z)
 	// Generujemy 10 stad
-	for (let i = 0; i < 35; i++) {
+	for (let i = 0; i < 15; i++) {
 		spawnHerd('boar', [4, 7], 3500, 4600, 40, 200)
 	}
 
@@ -148,54 +149,71 @@ const getClosestTrackD = (x: number, z: number, maxDist = 5000, step = 10): numb
 	return bestD
 }
 
-// Obliczanie wysokości terenu w danym punkcie (Symulacja logiki z Ground.tsx)
+// Obliczanie wysokości terenu w danym punkcie (dopasowane do Ground.tsx)
 const getHeightAt = (x: number, z: number) => {
 	// 1. Pobranie bazowej wysokości toru (nasypu)
 	const d = getClosestTrackD(x, z)
 	const info = getTrackInfo(d)
 	const baseHeight = info.height - 0.25
 
-	// Calculate offset from track for flattening logic
+	// Offset względem osi toru (perpendicular), zgodny z Ground.tsx
+	const h = info.heading || 0
+	const px = Math.cos(h)
+	const pz = -Math.sin(h)
 	const dx = x - info.x
 	const dz = z - info.z
-	const distToTrack = Math.sqrt(dx * dx + dz * dz)
+	const off = dx * px + dz * pz
+	const absOff = Math.abs(off)
 
 	// 2. Nałożenie szumu terenu (Noise)
-	let noiseHeight = getNoiseHeight(x, z) * 1.5
-
+	const noiseHeight = getNoiseHeight(x, z) * 1.5
 	let noiseFactor = 1.0
-	if (distToTrack < 6) noiseFactor = 0
-	else if (distToTrack < 40) noiseFactor = (distToTrack - 6) / 34
+	if (absOff < 6) noiseFactor = 0
+	else if (absOff < 40) noiseFactor = (absOff - 6) / 34
 
-	let val = baseHeight + noiseHeight * noiseFactor
+	let y = baseHeight + noiseHeight * noiseFactor
 
-	// 3. WYRÓWNYWANIE WOKÓŁ STACJI (Station Flattening)
-	// Używamy wspólnej konfiguracji STATION_DEFS
-	for (const s of STATION_DEFS) {
-		const dist = Math.abs(d - s.dist)
-		if (dist < 100) {
-			const flatFactor = Math.max(0, 1.0 - dist / 100)
-			val = val * (1 - flatFactor) + baseHeight * flatFactor
+	// 3. WYCINANIE KORYTA RZEKI (River Carving)
+	const riverCenterX = getRiverCenterX(z)
+	const riverHalfWidth = 150
+	if (x > riverCenterX - riverHalfWidth && x < riverCenterX + riverHalfWidth) {
+		const distFromCenter = Math.abs(x - riverCenterX)
+		const normalizedDist = distFromCenter / riverHalfWidth
+		const riverDepthFactor = 1 - normalizedDist * normalizedDist
+		const wY = baseHeight - 29
+		const riverBedY = wY - 10 * riverDepthFactor - 10
+		const blendStart = riverHalfWidth * 0.8
+		let blendFactor = 0
+		if (distFromCenter > blendStart) {
+			blendFactor = (distFromCenter - blendStart) / (riverHalfWidth - blendStart)
 		}
+		y = THREE.MathUtils.lerp(riverBedY, y, blendFactor)
 	}
 
-	let y = val
+	// 4. WYCINANIE POD TOROWISKO (TRACK CUT)
+	const isBridge = d > 2050 && d < 2750
+	if (!isBridge) {
+		if (absOff < 1.8) {
+			y = baseHeight
+		} else if (absOff < 3) {
+			const trackBlendFactor = (absOff - 1.8) / (3 - 1.8)
+			y = THREE.MathUtils.lerp(baseHeight, y, trackBlendFactor)
+		}
+	} else if (absOff < 25) {
+		const bridgeValleyFactor = Math.cos((absOff / 25) * (Math.PI / 2))
+		const drop = 20 * bridgeValleyFactor
+		y -= drop
+	}
 
-	// 4. WYCINANIE KORYTA RZEKI (River Carving)
-	const rCx = getRiverCenterX(z)
-	const riverWidth = 150
-	const dist = Math.abs(x - rCx)
-	const wY = baseHeight - 29
-
-	if (dist < riverWidth) {
-		const t = dist / riverWidth
-		const smoothStep = t * t * (3 - 1.4 * t)
-		const depthFactor = 2 - smoothStep
-		const maxDepth = 7.0
-		const desiredBedY = wY - 1 - maxDepth * depthFactor
-		if (y > desiredBedY) {
-			// Simple ease out
-			y = y + (desiredBedY - y) * depthFactor * 0.5
+	// 5. WYRÓWNYWANIE POD STACJAMI (Station Flattening)
+	for (const s of STATION_DEFS) {
+		const distDiff = d - s.dist
+		if (Math.abs(distDiff) < 50) {
+			if (s.side === 1) {
+				if (off > -5 && off < 50) y = baseHeight
+			} else if (off < 5 && off > -50) {
+				y = baseHeight
+			}
 		}
 	}
 

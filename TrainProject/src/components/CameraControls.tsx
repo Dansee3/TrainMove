@@ -1,9 +1,146 @@
 import React, { useRef, useEffect, useState } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { getTrackInfo } from './trackUtils'
+import { getTrackInfo, TRACK_SEGMENTS } from './trackUtils'
 import { getNoiseHeight } from '../utils/noise'
 import { STATION_DEFS } from './worldConfig'
+
+type WorldBounds = {
+	minX: number
+	maxX: number
+	minZ: number
+	maxZ: number
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const TRACK_STEP = 2
+const EXTEND_STEPS = 60
+const TRACK_SEARCH_STEP = 20
+const TRACK_REFINE_STEP = 2
+
+const TOTAL_TRACK_LENGTH = TRACK_SEGMENTS.reduce((s, seg) => s + seg.length, 0)
+const MIN_TERRAIN_DIST = -EXTEND_STEPS * TRACK_STEP
+const MAX_TERRAIN_DIST = TOTAL_TRACK_LENGTH + EXTEND_STEPS * TRACK_STEP
+
+const TERRAIN_HALF_WIDTH = 600
+
+const MAX_SIDE_OFFSET = TERRAIN_HALF_WIDTH
+
+const MAX_CAMERA_Y = 200
+
+const estimateTrackDistance = (position: THREE.Vector3) => {
+	let bestDist = 0
+	let bestSq = Number.POSITIVE_INFINITY
+
+	for (let d = 0; d <= TOTAL_TRACK_LENGTH; d += TRACK_SEARCH_STEP) {
+		const info = getTrackInfo(d)
+		const dx = position.x - info.x
+		const dz = position.z - info.z
+		const sq = dx * dx + dz * dz
+		if (sq < bestSq) {
+			bestSq = sq
+			bestDist = d
+		}
+	}
+
+	const refineStart = Math.max(0, bestDist - TRACK_SEARCH_STEP)
+	const refineEnd = Math.min(TOTAL_TRACK_LENGTH, bestDist + TRACK_SEARCH_STEP)
+	for (let d = refineStart; d <= refineEnd; d += TRACK_REFINE_STEP) {
+		const info = getTrackInfo(d)
+		const dx = position.x - info.x
+		const dz = position.z - info.z
+		const sq = dx * dx + dz * dz
+		if (sq < bestSq) {
+			bestSq = sq
+			bestDist = d
+		}
+	}
+
+	return bestDist
+}
+
+const clampToTerrainBounds = (position: THREE.Vector3) => {
+	const nearestDist = estimateTrackDistance(position)
+	const nearestInfo = getTrackInfo(nearestDist)
+	const h = nearestInfo.heading || 0
+	const rightX = Math.cos(h)
+	const rightZ = -Math.sin(h)
+	const forwardX = Math.sin(h)
+	const forwardZ = Math.cos(h)
+
+	const relX = position.x - nearestInfo.x
+	const relZ = position.z - nearestInfo.z
+	const sideOffset = relX * rightX + relZ * rightZ
+	const forwardOffset = relX * forwardX + relZ * forwardZ
+	const estimatedDist = nearestDist + forwardOffset
+	const clampedDist = clamp(estimatedDist, MIN_TERRAIN_DIST, MAX_TERRAIN_DIST)
+
+	const clampedInfo = getTrackInfo(clampedDist)
+	const clampedHeading = clampedInfo.heading || 0
+	const clampedRightX = Math.cos(clampedHeading)
+	const clampedRightZ = -Math.sin(clampedHeading)
+	const clampedSide = clamp(sideOffset, -MAX_SIDE_OFFSET, MAX_SIDE_OFFSET)
+
+	position.x = clampedInfo.x + clampedRightX * clampedSide
+	position.z = clampedInfo.z + clampedRightZ * clampedSide
+
+	return clampedDist
+}
+
+const buildWorldBounds = (): WorldBounds => {
+	const totalSteps = Math.ceil(TOTAL_TRACK_LENGTH / TRACK_STEP)
+	const maxOffset = 600
+	const margin = 50
+
+	let minX = Infinity
+	let maxX = -Infinity
+	let minZ = Infinity
+	let maxZ = -Infinity
+
+	for (let i = -EXTEND_STEPS; i <= totalSteps + EXTEND_STEPS; i++) {
+		const d = i * TRACK_STEP
+		const clampedD = clamp(d, 0, TOTAL_TRACK_LENGTH)
+		const info = getTrackInfo(clampedD)
+		const delta = d - clampedD
+		const h = info.heading || 0
+		const px = Math.cos(h)
+		const pz = -Math.sin(h)
+		const tx = Math.sin(h)
+		const tz = Math.cos(h)
+
+		const centerX = info.x + tx * delta
+		const centerZ = info.z + tz * delta
+
+		const leftX = centerX + px * -maxOffset
+		const leftZ = centerZ + pz * -maxOffset
+		const rightX = centerX + px * maxOffset
+		const rightZ = centerZ + pz * maxOffset
+
+		minX = Math.min(minX, leftX, rightX)
+		maxX = Math.max(maxX, leftX, rightX)
+		minZ = Math.min(minZ, leftZ, rightZ)
+		maxZ = Math.max(maxZ, leftZ, rightZ)
+	}
+
+	if (!isFinite(minX) || !isFinite(maxX)) {
+		minX = -700
+		maxX = 700
+	}
+	if (!isFinite(minZ) || !isFinite(maxZ)) {
+		minZ = -100
+		maxZ = TOTAL_TRACK_LENGTH + 200
+	}
+
+	return {
+		minX: minX - margin,
+		maxX: maxX + margin,
+		minZ: minZ - margin,
+		maxZ: maxZ + margin,
+	}
+}
+
+const WORLD_BOUNDS = buildWorldBounds()
 
 // --- KOMPONENT INTUICYJNEGO STEROWANIA WSAD ---
 export const SpectatorControls = ({ speed }: { speed: number }) => {
@@ -72,20 +209,12 @@ export const SpectatorControls = ({ speed }: { speed: number }) => {
 
 		// --- ŚCISŁE GRANICE MAPY (Blokada kamery) ---
 		// Blokujemy pozycję kamery, aby gracz nie wyleciał poza wygenerowany świat gry.
-		const maxX = 700
-		const minX = -700
-		const maxZ = 5200
-		const minZ = -100
-
-		if (camera.position.x > maxX) camera.position.x = maxX
-		if (camera.position.x < minX) camera.position.x = minX
-		if (camera.position.z > maxZ) camera.position.z = maxZ
-		if (camera.position.z < minZ) camera.position.z = minZ
+		const clampedDist = clampToTerrainBounds(camera.position)
 
 		// Detekcja kolizji z terenem
 		// Obliczamy dokładną wysokość terenu pod kamerą, aby nie wpadła pod ziemię.
-		const info = getTrackInfo(camera.position.z)
-		const baseHeight = info.height - 0.25
+		const info = getTrackInfo(clampedDist)
+		const baseHeight = info.height + 10.25
 		let terrainY = getNoiseHeight(camera.position.x, camera.position.z) * 1.5 + baseHeight
 
 		// Wygładzanie terenu w pobliżu stacji (spójne z logiką w Ground.tsx)
@@ -101,6 +230,7 @@ export const SpectatorControls = ({ speed }: { speed: number }) => {
 		// Utrzymywanie minimalnej wysokości nad terenem (2.0 jednostki)
 		const minY = terrainY + 2.0
 		if (camera.position.y < minY) camera.position.y = minY
+		if (camera.position.y > MAX_CAMERA_Y) camera.position.y = MAX_CAMERA_Y
 	})
 
 	return null
@@ -188,18 +318,10 @@ export const FollowCamera = ({
 		const target = new THREE.Vector3().copy(tRef.position).add(offset)
 
 		// Ograniczenie celu kamery (Target Clamping) - kamera nie wyjeżdża poza mapę
-		const maxX = 700
-		const minX = -700
-		const maxZ = 5200
-		const minZ = -100
-
-		if (target.x > maxX) target.x = maxX
-		if (target.x < minX) target.x = minX
-		if (target.z > maxZ) target.z = maxZ
-		if (target.z < minZ) target.z = minZ
+		const clampedDist = clampToTerrainBounds(target)
 
 		// Ground Collision
-		const info = getTrackInfo(target.z)
+		const info = getTrackInfo(clampedDist)
 		// Przybliżona wysokość bazowa od toru
 		const baseHeight = info.height - 0.25
 		let terrainY = getNoiseHeight(target.x, target.z) * 1.5 + baseHeight
@@ -215,8 +337,10 @@ export const FollowCamera = ({
 
 		const minY = terrainY + 2.0
 		if (target.y < minY) target.y = minY
+		if (target.y > MAX_CAMERA_Y) target.y = MAX_CAMERA_Y
 
 		camera.position.lerp(target, 0.12)
+		if (camera.position.y > MAX_CAMERA_Y) camera.position.y = MAX_CAMERA_Y
 		camera.lookAt(tRef.position)
 	})
 

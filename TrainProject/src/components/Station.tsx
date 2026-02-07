@@ -83,9 +83,9 @@ export const Station = ({ name, distance, color = '#8B4513', side = 1 }: Station
 				</mesh>
 
 				{/* Wisząca tablica z nazwą stacji */}
-				<group position={[-3, 3.5, 0]}>
+				<group position={[-3, 4.5, 0]}>
 					<mesh position={[0, 0, 0]}>
-						<boxGeometry args={[0.2, 0.8, 12]} />
+						<boxGeometry args={[0.2, 2.6, 12]} />
 						<meshStandardMaterial color='#fff' />
 					</mesh>
 					<Text

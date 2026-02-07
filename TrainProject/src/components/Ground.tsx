@@ -37,10 +37,10 @@ export const Ground: React.FC = () => {
 	const offsets = useMemo(() => {
 		const result = []
 		// Większa rozdzielczość w pobliżu toru (0) i obszarów rzecznych
-		result.push(-750, -500, -300, -200, -100, -60, -40, -20)
+		result.push(-600, -450, -300, -200, -100, -60, -40, -20)
 		result.push(-10, -6, -3, -1.8, 0)
 		result.push(1.8, 3, 6, 10, 20, 40, 60, 100)
-		result.push(200, 300, 500, 750)
+		result.push(200, 300, 450, 600)
 		return result.sort((a, b) => a - b)
 	}, [])
 
@@ -152,6 +152,16 @@ export const Ground: React.FC = () => {
 						const trackBlendFactor = (absOff - 1.8) / (3 - 1.8)
 						wy = THREE.MathUtils.lerp(baseHeight, wy, trackBlendFactor)
 					}
+				} else {
+					// Logic for Bridge: Create a valley/drop under the bridge
+					if (absOff < 25) {
+						// Calculate depth factor based on distance from center
+						// Center (0) -> Deepest (-20m)
+						// Edge (25) -> 0 change
+						const bridgeValleyFactor = Math.cos((absOff / 25) * (Math.PI / 2))
+						const drop = 20 * bridgeValleyFactor
+						wy -= drop
+					}
 				}
 
 				// 4. WYRÓWNYWANIE POD STACJAMI (STATION FLATTENING)
@@ -190,9 +200,16 @@ export const Ground: React.FC = () => {
 			const edgeDrop = 2.6
 			const centerLift = 0.05
 
-			const wLeft = rCx - halfWidth - 20
-			const wMid = rCx
-			const wRight = rCx + halfWidth + 20
+			// Calculate track bounds at this z to clamp water
+			// Approx track pos for this Z?
+			// "centerX" is the track center at this step.
+			// Ground extends from centerX - 600 to centerX + 600.
+			const minX = centerX - 600
+			const maxX = centerX + 600
+
+			const wLeft = Math.max(minX + 5, Math.min(maxX - 5, rCx - halfWidth - 20))
+			const wMid = Math.max(minX + 5, Math.min(maxX - 5, rCx))
+			const wRight = Math.max(minX + 5, Math.min(maxX - 5, rCx + halfWidth + 20))
 
 			const waterSurfaceY = wY - 2.5 // Visual lower level
 
@@ -327,7 +344,7 @@ export const Ground: React.FC = () => {
 		}
 
 		const lcg = (s: number) => () => ((2 ** 31 - 1) & (s = Math.imul(48271, s))) / 2 ** 31
-		const rng = lcg(1337)
+		const rng = lcg(137)
 
 		// Increased tree count for fuller environment
 		const baseTreeCount = Math.floor(totalTrackLength * 2.5)
@@ -340,7 +357,7 @@ export const Ground: React.FC = () => {
 			// 1. DRZEWA PRZYTOROWE I NADRZECZNE (NEAR TRACK)
 			// Losujemy stronę i sprawdzamy, czy grunt nadaje się do posadzenia drzewa
 			const side = rng() > 0.5 ? 1 : -1
-			const trOff = 15 + Math.abs(rng()) * 550 // Slightly reduced max offset for "near" trees
+			const trOff = 15 + Math.abs(rng()) * 450 // Max ~465, safe within 500
 
 			// Generate both sides occasionally
 			const passCount = rng() > 0.7 ? 2 : 1
@@ -352,16 +369,12 @@ export const Ground: React.FC = () => {
 			for (let p = 0; p < loopCount; p++) {
 				const currentSide = p === 0 ? side : -side
 
-				// Extra logic for river trees
-				if (isEndRiver && p >= passCount) {
-					// This block was intended for extra river trees but we used a separate loop instead.
-					// Removing unused code to fix lints.
-				}
-
 				// 2. DRZEWA W TLE (BACKGROUND TREES)
 				// Czasami wymuszamy drzewo daleko w tle dla głębi
 				const isFar = rng() > 0.8
-				const actualOff = isFar ? 300 + Math.abs(rng()) * 400 : trOff
+				// Max offset target: 500.
+				// If far: Start at 200, add up to 300 -> 500 max.
+				const actualOff = isFar ? 200 + Math.abs(rng()) * 300 : trOff
 
 				// Force dense trees at end near river
 				if (isEndRiver && p === 2) {
@@ -381,9 +394,9 @@ export const Ground: React.FC = () => {
 				const tz = tInfo.z + tPz * currentSide * actualOff
 
 				// BOUNDS CHECK (Strict)
-				// Mesh generation usually goes up to offset ~750.
+				// Mesh generation usually goes up to offset ~600.
 				// We keep trees within safer bounds to ensure they are on generated geometry.
-				if (tx < -750 || tx > 750) continue
+				if (tx < -600 || tx > 600) continue
 
 				// --- SPECIFIC FIX: MORE TREES NEAR RIVER AT END ---
 				// If we are at the end, and we accidentally picked a spot NOT near the river,
@@ -417,7 +430,7 @@ export const Ground: React.FC = () => {
 				const rCx_tree = getRiverCenterX(tz)
 				// Wider exclusion for river to prevent trees in water (River halfwidth is 150)
 				// 160 ensures they are clearly on the bank
-				if (Math.abs(tx - rCx_tree) < 160) continue
+				if (Math.abs(tx - rCx_tree) < 170) continue
 
 				// Check bounds of map (Z)
 				// Our generated mesh goes from roughly -300 to totalLength+300
@@ -442,93 +455,6 @@ export const Ground: React.FC = () => {
 				})
 				registerTree(tx, tz)
 			}
-		}
-
-		// --- DODATKOWA PĘTLA DLA RZEKI (EXTRA RIVER TREES) ---
-		// Specjalna pętla dolesiająca brzegi rzeki, szczególnie na końcu mapy
-		const extraTrees = 800
-		for (let k = 0; k < extraTrees; k++) {
-			// Range: 3500 to totalLength
-			const z = 3500 + rng() * (totalTrackLength - 3500)
-			// River is at getRiverCenterX(z)
-			const rx = getRiverCenterX(z)
-
-			// Left bank or Right bank
-			const side = rng() > 0.5 ? 1 : -1
-			// Dist from center: 160 to 420 (Start larger than 150 half-width)
-			const dist = 160 + rng() * 260
-
-			const tx = rx + side * dist
-			const tz = z
-
-			// Standard checks
-			if (hasNearbyTree(tx, tz)) continue
-
-			// Avoid station
-			const dToEnd = Math.abs(tz - 4780)
-			if (dToEnd < 80) continue
-
-			// Sample height - this is tricky because we need 'trD' and 'offset' to use sampleHeightFromGrid
-			// But we have global x, z.
-			// We can try to approximate or just use getNoiseHeight?
-			// sampleHeightFromGrid is better because it accounts for the river carving we just did.
-			// To use it, we need to map (tx, tz) back to (trackDist, trackOffset).
-			// This is hard.
-			// BUT, we can just use the grid directly if we know the indices?
-			// No, grid is 1D array.
-
-			// Alternative: Use 3D Raycast? No.
-			// Let's just trust getNoiseHeight + manual river check?
-			// But river carving logic is complex in the loop.
-
-			// Actually, we can assume track is roughly straight at the end?
-			// At z > 3000, track is mostly straight?
-			// Track segments:
-			// { length: 600, angle: 0.02, turn: 0.15 }, // Dalszy podjazd (Ends 3200m)
-			// { length: 500, angle: 0.01, turn: -0.1 }, // Łagodny łuk (Ends 3700m)
-			// { length: 600, angle: -0.01, turn: 0.2 }, // Zjazd z łukiem (Ends 4300m)
-			// Curve is significant.
-
-			// Strategy: Iterate by Track Distance, but specifically target River Offset relative to world?
-			// No, iterate by Track Distance, identify River Center relative to Track, then place tree.
-
-			const trD = z // Approximation
-			const tInfo = getTrackInfo(trD)
-			const rCx_tree = getRiverCenterX(tInfo.z)
-
-			// We want tree at rCx_tree +/- dist.
-			// We need to find 'offset' from track such that track + offset = river +/- dist
-			// track.x + offset * cos(h) = rCx +/- dist
-			// offset = (rCx +/- dist - track.x) / cos(h)
-
-			const tH = tInfo.heading || 0
-			const tPx = Math.cos(tH) // x component of right vector
-			// if tPx is near 0, we have a problem (track perpendicular to X).
-			// But track heading is usually small.
-
-			if (Math.abs(tPx) < 0.1) continue
-
-			const targetX = rCx_tree + side * dist
-			const neededOffset = (targetX - tInfo.x) / tPx
-
-			// Now use this offset
-			const terrainY = sampleHeightFromGrid(trD, neededOffset)
-			if (!Number.isFinite(terrainY)) continue
-			if (terrainY < -5) continue // Underwater
-
-			const realTx = tInfo.x + tPx * neededOffset
-			const realTz = tInfo.z + -Math.sin(tH) * neededOffset // verify this math?
-			// actually we just want to retrieve height.
-			// We can reconstruct positions:
-
-			tData.push({
-				x: realTx,
-				y: terrainY - 0.2,
-				z: realTz,
-				scale: 0.8 + Math.abs(rng()) * 0.6,
-				rot: Math.abs(rng()) * Math.PI * 2,
-			})
-			registerTree(realTx, realTz)
 		}
 
 		return { geometry: geom, treeData: tData, waterGeometry: wGeom }
@@ -579,7 +505,7 @@ export const Ground: React.FC = () => {
 		treeData.forEach((d, i) => {
 			dummy.position.set(d.x, d.y, d.z)
 			dummy.rotation.set(0, d.rot, 0)
-			const s = d.scale * 3
+			const s = d.scale * 2
 			dummy.scale.set(s, s, s)
 			dummy.updateMatrix()
 			treeMeshRef.current!.setMatrixAt(i, dummy.matrix)

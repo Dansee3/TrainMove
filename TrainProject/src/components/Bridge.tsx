@@ -13,6 +13,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 	const deckMeshRef = useRef<THREE.InstancedMesh>(null)
 	const railingMeshRef = useRef<THREE.InstancedMesh>(null)
 	const pillarMeshRef = useRef<THREE.InstancedMesh>(null)
+	const BRIDGE_X_OFFSET = 0
 
 	// Konfiguracja wymiarów elementów mostu
 	const SEGMENT_LENGTH = 2.0 // Długość pojedynczego segmentu pomostu
@@ -35,7 +36,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 		let rIdx = 0
 		let pIdx = 0
 
-		const endDist = startDist // 1. SEGMENTY POMOSTU (DECK)
+		const endDist = startDist + length // 1. SEGMENTY POMOSTU (DECK)
 		for (let d = startDist; d <= endDist; d += SEGMENT_LENGTH) {
 			const info = getTrackInfo(d)
 			const nextInfo = getTrackInfo(d + SEGMENT_LENGTH)
@@ -47,7 +48,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 			// Tor jest na info.height - 0.25. Pomost dajemy nieco niżej.
 			// Ustawiamy górę pomostu na info.height - 1.0 (pod podkładami).
 
-			dummy.position.set(info.x, info.height - 1, info.z)
+			dummy.position.set(info.x + BRIDGE_X_OFFSET, info.height - 1, info.z)
 			dummy.rotation.set(0, h, 0)
 			dummy.scale.set(1, 1, 1) // Box is 1 unit long? No, args are fixed.
 			dummy.updateMatrix()
@@ -65,7 +66,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 			// Dla efektu wizualnego wystarczy stała, duża wysokość (np. 70m), aby "wchodził" w wodę/ziemię.
 			const pillarH = 70
 
-			dummy.position.set(info.x, info.height - 1 - pillarH / 2 - 0.8, info.z)
+			dummy.position.set(info.x + BRIDGE_X_OFFSET, info.height - 1 - pillarH / 2 - 0.8, info.z)
 			dummy.rotation.set(0, h, 0)
 			dummy.scale.set(1, 1, 1)
 			dummy.updateMatrix()
@@ -81,12 +82,12 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 			// Lewy słupek
 			// Ustawienie pozycji (manualne transformacje dla idealnego dopasowania)
 			dummy.position.set(
-				info.x + Math.cos(h) * (-width / 2 + 0.2),
+				info.x + BRIDGE_X_OFFSET + Math.cos(h) * (-width / 2 + 0.2),
 				info.height - 0.5 + 0.75, // Deck top + połowa wysokości słupka
 				info.z + Math.sin(h) * (width / 2 - 0.2) * -1,
 			)
 			// Re-do manual transform using Object3D consistent with Deck
-			dummy.position.set(info.x, info.height, info.z)
+			dummy.position.set(info.x + BRIDGE_X_OFFSET, info.height, info.z)
 			dummy.rotation.set(0, h, 0)
 			dummy.translateX(-width / 2 + 0.2)
 			dummy.translateY(0)
@@ -95,7 +96,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 			railingMeshRef.current.setMatrixAt(rIdx++, dummy.matrix)
 
 			// Prawy słupek
-			dummy.position.set(info.x, info.height, info.z)
+			dummy.position.set(info.x + BRIDGE_X_OFFSET, info.height, info.z)
 			dummy.rotation.set(0, h, 0)
 			dummy.translateX(width / 2 - 0.2)
 			dummy.translateY(0)

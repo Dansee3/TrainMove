@@ -91,9 +91,9 @@ const TutorialOverlay = () => {
 	useEffect(() => {
 		setVisible(true)
 		if (cameraMode === 'FOLLOW') {
-			setText("CLICK & DRAG TO ROTATE.\nHOLD 'W' TO ACCELERATE.\n'S' TO DECELERATE.\nSPACE - BRAKE.")
+			setText("CLICK & DRAG TO ROTATE.\nHOLD 'W' TO ACCELERATE.\n'S' TO DECELERATE.\nSPACE - BRAKE.\n'K' - HORN.")
 		} else {
-			setText("WASD - MOVE CAMERA.\nMOUSE - LOOK AROUND.\n'E' - TRAIN THROTTLE.\n'Q' - TRAIN BRAKE.")
+			setText("WASD - MOVE CAMERA.\nMOUSE - LOOK AROUND.\n'E' - TRAIN THROTTLE.\n'Q' - TRAIN BRAKE.\n'K' - HORN.")
 		}
 
 		if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -143,6 +143,13 @@ export const HUD = () => {
 		restart,
 	} = useGameStore()
 
+	const hornRef = useRef<HTMLAudioElement | null>(null)
+
+	useEffect(() => {
+		hornRef.current = new Audio('/sounds/trainHorn.mp3')
+		hornRef.current.volume = 0.8
+	}, [])
+
 	// Smooth Brake Visualization
 	const [visualBrake, setVisualBrake] = useState(0)
 
@@ -160,6 +167,13 @@ export const HUD = () => {
 
 		const handleKeyDown = (e: KeyboardEvent) => {
 			const code = e.code.toLowerCase()
+			if (code === 'keyk' && !e.repeat) {
+				const horn = hornRef.current
+				if (horn) {
+					horn.currentTime = 0
+					void horn.play()
+				}
+			}
 			if (code === 'keyw') keys.w = true
 			if (code === 'keys') keys.s = true
 			if (code === 'keye') keys.e = true
@@ -197,9 +211,12 @@ export const HUD = () => {
 
 		const loop = () => {
 			const currentThrottle = useGameStore.getState().throttle
+			const currentBrake = useGameStore.getState().brake
 			let newThrottle = currentThrottle
-			let newBrake = 0
+			let newBrake = currentBrake
 			const camMode = useGameStore.getState().cameraMode
+			const brakeApplyStep = 0.02
+			const brakeReleaseStep = 0.015
 
 			if (camMode === 'FOLLOW') {
 				// Throttle inputs (W/S)
@@ -210,7 +227,9 @@ export const HUD = () => {
 				}
 				// Brake inputs (SPACE)
 				if (keys.space) {
-					newBrake = 1
+					newBrake = Math.min(1, currentBrake + brakeApplyStep)
+				} else {
+					newBrake = Math.max(0, currentBrake - brakeReleaseStep)
 				}
 			} else {
 				// FreeCam Mode
@@ -220,8 +239,10 @@ export const HUD = () => {
 				}
 				// Q = Brake (and reduce throttle for control?)
 				if (keys.q) {
-					newBrake = 1
+					newBrake = Math.min(1, currentBrake + brakeApplyStep)
 					newThrottle = Math.max(0, currentThrottle - 0.01) // Let Q also reduce throttle
+				} else {
+					newBrake = Math.max(0, currentBrake - brakeReleaseStep)
 				}
 			}
 
@@ -341,12 +362,14 @@ export const HUD = () => {
 								<span style={{ color: '#fff', fontWeight: 600 }}>W</span> <span>Increase Power</span>
 								<span style={{ color: '#fff', fontWeight: 600 }}>S</span> <span>Decrease Power</span>
 								<span style={{ color: '#fff', fontWeight: 600 }}>SPACE</span> <span>Brake</span>
+								<span style={{ color: '#fff', fontWeight: 600 }}>K</span> <span>Horn</span>
 							</>
 						) : (
 							<>
 								<span style={{ color: '#fff', fontWeight: 600 }}>WASD</span> <span>Move Camera</span>
 								<span style={{ color: '#fff', fontWeight: 600 }}>E</span> <span>Train Power</span>
 								<span style={{ color: '#fff', fontWeight: 600 }}>Q</span> <span>Train Brake</span>
+								<span style={{ color: '#fff', fontWeight: 600 }}>K</span> <span>Horn</span>
 							</>
 						)}
 					</div>
