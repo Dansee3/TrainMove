@@ -5,7 +5,7 @@ import { getNoiseHeight } from '../utils/noise'
 import { getRiverCenterX, STATION_DEFS } from './worldConfig'
 import { RoeDeerModel, RedDeerModel, WildBoarModel } from './AnimalModels'
 
-// --- LOGIKA ROZMIESZCZANIA ZWIERZĄT (SPAWNING SYSTEM) ---
+// --- LOGIKA ROZMIESZCZANIA ZWIERZĄT (spawnowanie) ---
 
 interface Animal {
 	type: 'roe' | 'red' | 'boar'
@@ -33,27 +33,27 @@ const generateAnimals = (): Animal[] => {
 			const side = Math.random() > 0.5 ? 1 : -1
 			const offCenter = offsetMin + Math.random() * (offsetMax - offsetMin)
 
-			// Initial check for herd center
+			// Wstępne sprawdzenie środka stada
 			const centerPos = getPlacement(zCenter, offCenter * side)
 
-			// Unikanie stacji (Station Avoidance) - sprawdzamy wszystkie zdefiniowane stacje
+			// Unikanie stacji (omijanie) - sprawdzam wszystkie zdefiniowane stacje
 			let nearStation = false
 			for (const s of STATION_DEFS) {
-				// Determine exclusion zone based on side
-				// Simple box around station
+				// Strefa wykluczenia zależna od strony
+				// Prosty "box" wokół stacji
 				const dDist = Math.abs(centerPos.z - s.dist)
 				if (dDist < 150) {
-					// Safety buffer
-					// Side check: if station is on side 1, exclude side 1 and track area
-					// Station on side -1, exclude side -1
-					// Here we just do a simple radius check for safety
+					// Bufor bezpieczeństwa
+					// Strona: jeśli stacja jest po stronie 1, to wykluczam stronę 1 i okolice toru
+					// Dla strony -1 wykluczam stronę -1
+					// Tu robię prosty test promienia
 					nearStation = true
 					break
 				}
 			}
 			if (nearStation) continue
 
-			if (centerPos.y < -1.5) continue // Underwater check
+			if (centerPos.y < -1.5) continue // Sprawdzenie, czy nie pod wodą
 
 			// Spawnowanie stada wokół wylosowanego centrum
 			const herdSize = Math.floor(Math.random() * (countRange[1] - countRange[0] + 1)) + countRange[0]
@@ -69,15 +69,15 @@ const generateAnimals = (): Animal[] => {
 				const finalX = centerPos.x + dx
 				const finalZ = centerPos.z + dz
 
-				// Re-calculate height for individual animal
+				// Przeliczam wysokość dla każdego zwierzaka
 				const y = getHeightAt(finalX, finalZ)
 
-				// Ścisła kontrola wody (Strict Water Check) - nie chcemy saren w rzece
+				// Ścisła kontrola wody (twardy test) - nie chcę saren w rzece
 				const rCx = getRiverCenterX(finalZ)
 				const distToRiver = Math.abs(finalX - rCx)
 
 				let isWater = false
-				if (distToRiver < 160) isWater = true // Strefa buforowa rzeki
+				if (distToRiver < 160) isWater = true // Bufor rzeki
 				if (y < -3) isWater = true // Dodatkowy próg wysokości
 
 				if (!isWater) {
@@ -93,7 +93,7 @@ const generateAnimals = (): Animal[] => {
 			// Jeśli udało się stworzyć sensowne stado, zapisujemy je
 			if (herd.length >= 3) {
 				animals.push(...herd)
-				return // Success for this herd call
+				return // Udało się dla tego stada
 			}
 		}
 	}
@@ -134,7 +134,7 @@ const getClosestTrackD = (x: number, z: number, maxDist = 5000, step = 10): numb
 			minD = d
 		}
 	}
-	// Wyszukiwanie dokładne (Fine search) wokół znalezionego minimum
+	// Wyszukiwanie dokładne wokół znalezionego minimum
 	let bestD = minD
 	for (let d = Math.max(0, minD - step); d <= Math.min(maxDist, minD + step); d += 1) {
 		const info = getTrackInfo(d)
@@ -156,7 +156,7 @@ const getHeightAt = (x: number, z: number) => {
 	const info = getTrackInfo(d)
 	const baseHeight = info.height - 0.25
 
-	// Offset względem osi toru (perpendicular), zgodny z Ground.tsx
+	// Przesunięcie względem osi toru (prostopadle), zgodne z Ground.tsx
 	const h = info.heading || 0
 	const px = Math.cos(h)
 	const pz = -Math.sin(h)
@@ -165,7 +165,7 @@ const getHeightAt = (x: number, z: number) => {
 	const off = dx * px + dz * pz
 	const absOff = Math.abs(off)
 
-	// 2. Nałożenie szumu terenu (Noise)
+	// 2. Nałożenie szumu terenu (szum)
 	const noiseHeight = getNoiseHeight(x, z) * 1.5
 	let noiseFactor = 1.0
 	if (absOff < 6) noiseFactor = 0
@@ -173,7 +173,7 @@ const getHeightAt = (x: number, z: number) => {
 
 	let y = baseHeight + noiseHeight * noiseFactor
 
-	// 3. WYCINANIE KORYTA RZEKI (River Carving)
+	// 3. WYCINANIE KORYTA RZEKI (wycinanie)
 	const riverCenterX = getRiverCenterX(z)
 	const riverHalfWidth = 150
 	if (x > riverCenterX - riverHalfWidth && x < riverCenterX + riverHalfWidth) {
@@ -190,7 +190,7 @@ const getHeightAt = (x: number, z: number) => {
 		y = THREE.MathUtils.lerp(riverBedY, y, blendFactor)
 	}
 
-	// 4. WYCINANIE POD TOROWISKO (TRACK CUT)
+	// 4. WYCINANIE POD TOROWISKO
 	const isBridge = d > 2050 && d < 2750
 	if (!isBridge) {
 		if (absOff < 1.8) {
@@ -205,7 +205,7 @@ const getHeightAt = (x: number, z: number) => {
 		y -= drop
 	}
 
-	// 5. WYRÓWNYWANIE POD STACJAMI (Station Flattening)
+	// 5. WYRÓWNYWANIE POD STACJAMI (spłaszczenie)
 	for (const s of STATION_DEFS) {
 		const distDiff = d - s.dist
 		if (Math.abs(distDiff) < 50) {
@@ -223,7 +223,7 @@ const getHeightAt = (x: number, z: number) => {
 const getPlacement = (z: number, offset: number) => {
 	const info = getTrackInfo(z)
 	const h = info.heading || 0
-	// Perpendicular
+	// Prostopadle do toru
 	const dx = Math.cos(h) * offset
 	const dz = -Math.sin(h) * offset
 

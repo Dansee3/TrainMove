@@ -6,7 +6,7 @@ import { useTexture } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { getRiverCenterX, STATION_DEFS } from './worldConfig'
 
-// Static geometries
+// Statyczne geometrie
 const treeGeo = new THREE.CylinderGeometry(0.2, 0.4, 3, 5)
 treeGeo.translate(0, 1.5, 0)
 const leafGeoFinal = new THREE.ConeGeometry(1.5, 4, 7)
@@ -15,7 +15,7 @@ leafGeoFinal.translate(0, 4, 0)
 export const Ground: React.FC = () => {
 	const totalTrackLength = useMemo(() => TRACK_SEGMENTS.reduce((s, seg) => s + seg.length, 0), [])
 
-	// Texture Setup
+	// Ustawienia tekstur
 	const PATH = '/textures/brown_mud_leaves_01_2k/textures/'
 	const props = useTexture({
 		map: PATH + 'brown_mud_leaves_01_diff_2k.jpg',
@@ -53,7 +53,7 @@ export const Ground: React.FC = () => {
 		const trackStep = 2.0
 		const totalSteps = Math.ceil(totalTrackLength / trackStep)
 
-		// 1. ROZSZERZONE GRANICE MAPY (EXTENDED BOUNDS)
+		// 1. ROZSZERZONE GRANICE MAPY (poszerzony obszar)
 		// Generujemy dodatkowe segmenty przed startem i za końcem, aby uniknąć pustki
 		const extendSteps = 60
 		const startStep = -extendSteps
@@ -62,7 +62,7 @@ export const Ground: React.FC = () => {
 		const heightGrid = new Float32Array(totalGeneratedSteps * rowSize)
 
 		const waterPos: number[] = []
-		const waterBaseYs: number[] = [] // Store base height for animation
+		const waterBaseYs: number[] = [] // Bazowa wysokość do animacji
 		const waterInd: number[] = []
 
 		for (let i = startStep; i <= endStep; i++) {
@@ -74,10 +74,10 @@ export const Ground: React.FC = () => {
 
 			const delta = d - clampedD
 			const h = info.heading || 0
-			// Normal vector (Right vector)
+			// Wektor normalny (prawa strona)
 			const px = Math.cos(h)
 			const pz = -Math.sin(h)
-			// Tangent vector (Forward vector)
+			// Wektor styczny (do przodu)
 			const tx = Math.sin(h)
 			const tz = Math.cos(h)
 
@@ -96,29 +96,29 @@ export const Ground: React.FC = () => {
 				const wx = centerX + px * off
 				const wz = centerZ + pz * off
 
-				// 1. GENEROWANIE BAZY I SZUMU (NOISE)
+				// 1. GENEROWANIE BAZY I SZUMU (szum)
 				const noiseVal = getNoiseHeight(wx, wz) * 1.5
 
-				// Wygładzanie w pobliżu torowiska (Flattening)
+				// Wygładzanie w pobliżu torowiska (spłaszczenie)
 				const absOff = Math.abs(off)
 				let noiseFactor = 1.0
 				if (absOff < 6) noiseFactor = 0
-				else if (absOff < 40) noiseFactor = (absOff - 6) / 34 // Fixed range (40-6=34) for smooth 0-1 transition
+				else if (absOff < 40) noiseFactor = (absOff - 6) / 34 // Stały zakres (40-6=34) dla płynnego przejścia 0-1
 
 				let wy = baseHeight + noiseVal * noiseFactor
 
-				// 2. KORYTO RZEKI (RIVER CUT)
+				// 2. KORYTO RZEKI (wycinanie)
 				// Wycinanie proceduralne koryta w terenie
 				const riverCenterX = getRiverCenterX(centerZ)
 				const riverHalfWidth = 150
 				const riverEdge = riverCenterX - riverHalfWidth
 				const riverFarEdge = riverCenterX + riverHalfWidth
 
-				// Check if current point is within river bounds
+				// Sprawdzenie, czy punkt jest w obrębie rzeki
 				if (wx > riverEdge && wx < riverFarEdge) {
-					// Calculate distance from river center
+					// Odległość od środka rzeki
 					const distFromRiverCenter = Math.abs(wx - riverCenterX)
-					// Normalize distance from center to edge (0 at center, 1 at edge)
+					// Normalizacja: 0 w środku, 1 na brzegu
 					const normalizedDist = distFromRiverCenter / riverHalfWidth
 
 					// Zastosowanie krzywej parabolicznej dla profilu dna rzeki
@@ -127,9 +127,9 @@ export const Ground: React.FC = () => {
 					const maxRiverDepth = 10 // Maksymalna głębokość
 					const riverBedY = wY - maxRiverDepth * riverDepthFactor - 10
 
-					// Mieszanie wysokości terenu z dnem rzeki (Blend)
+					// Mieszanie wysokości terenu z dnem rzeki (blend)
 					// Tworzymy płynne przejście brzegu
-					const blendStart = riverHalfWidth * 0.8 // Start blendowania (80% szerokości)
+					const blendStart = riverHalfWidth * 0.8 // Początek blendowania (80% szerokości)
 					const blendEnd = riverHalfWidth // Koniec blendowania
 					let blendFactor = 0
 					if (distFromRiverCenter > blendStart) {
@@ -139,7 +139,7 @@ export const Ground: React.FC = () => {
 					wy = THREE.MathUtils.lerp(riverBedY, wy, blendFactor)
 				}
 
-				// 3. WYCINANIE POD TOROWISKO (TRACK CUT)
+				// 3. WYCINANIE POD TOROWISKO
 				// Wyrównanie terenu bezpośrednio pod torami
 				// POMIJAMY DLA MOSTU (2050 - 2750) - tam teren ma opaść naturalnie
 				const isBridge = d > 2050 && d < 2750
@@ -148,31 +148,31 @@ export const Ground: React.FC = () => {
 					if (absOff < 1.8) {
 						wy = baseHeight
 					} else if (absOff < 3) {
-						// Smooth transition from track to terrain
+						// Płynne przejście z toru na teren
 						const trackBlendFactor = (absOff - 1.8) / (3 - 1.8)
 						wy = THREE.MathUtils.lerp(baseHeight, wy, trackBlendFactor)
 					}
 				} else {
-					// Logic for Bridge: Create a valley/drop under the bridge
+					// Logika mostu: robimy dolinę/pad pod mostem
 					if (absOff < 25) {
-						// Calculate depth factor based on distance from center
-						// Center (0) -> Deepest (-20m)
-						// Edge (25) -> 0 change
+						// Współczynnik głębokości zależny od odległości od środka
+						// Środek (0) -> najgłębiej (-20m)
+						// Brzeg (25) -> bez zmian
 						const bridgeValleyFactor = Math.cos((absOff / 25) * (Math.PI / 2))
 						const drop = 20 * bridgeValleyFactor
 						wy -= drop
 					}
 				}
 
-				// 4. WYRÓWNYWANIE POD STACJAMI (STATION FLATTENING)
+				// 4. WYRÓWNYWANIE POD STACJAMI (spłaszczenie)
 				// Wymuszamy płaski teren wokół stacji, aby budynki nie wisiały ani nie tonęły
 				for (const s of STATION_DEFS) {
 					const distDiff = d - s.dist
-					// Square field: +/- 50m along track, and wide enough on the side
+					// Pole kwadratowe: +/- 50m wzdłuż toru i wystarczająco szeroko na boki
 					if (Math.abs(distDiff) < 50) {
-						// Flatten on the station side, extending slightly to the other side to cover track
-						// Side 1 (Right): offset > -5 to 50
-						// Side -1 (Left): offset < 5 to -50
+						// Spłaszczamy po stronie stacji, lekko zahaczając drugą stronę, żeby objąć tor
+						// Strona 1 (prawa): przesunięcie > -5 do 50
+						// Strona -1 (lewa): przesunięcie < 5 do -50
 						if (s.side === 1) {
 							if (off > -5 && off < 50) wy = baseHeight
 						} else {
@@ -182,28 +182,27 @@ export const Ground: React.FC = () => {
 				}
 
 				positions.push(wx, wy, wz)
-				uvs.push(wx * 0.02, wz * 0.02) // UVs for texture mapping
+				uvs.push(wx * 0.02, wz * 0.02) // UV dla teksturowania
 
-				// Store in grid (mapped to 0-based index)
+				// Zapis do siatki (indeksowanie od zera)
 				const gridIndex = (i - startStep) * rowSize + j
 				heightGrid[gridIndex] = wy
 			}
 
-			// --- GENEROWANIE WODY (WATER MESH) ---
+			// --- GENEROWANIE WODY (siatka wody) ---
 			const rCx = getRiverCenterX(centerZ)
 			const halfWidth = 150
-			// We remove the static wave calculation here, or simpler: keep it zero-based for base?
-			// User wanted "baseY" to be the value WITHOUT the dynamic wave.
-			// The previous static wave was: sin(centerZ * 0.002 + i * 0.1) * 2.5
-			// We'll calculate the static "rest" positions for Side/Mid.
+			// Usuwam statyczną falę, baza ma być "na zero" bez animacji
+			// "baseY" ma być wartością BEZ dynamicznej fali
+			// Wcześniej było: sin(centerZ * 0.002 + i * 0.1) * 2.5
+			// Liczę tylko pozycje spoczynkowe (boki/środek)
 
 			const edgeDrop = 2.6
 			const centerLift = 0.05
 
-			// Calculate track bounds at this z to clamp water
-			// Approx track pos for this Z?
-			// "centerX" is the track center at this step.
-			// Ground extends from centerX - 600 to centerX + 600.
+			// Liczę granice toru dla tego Z, żeby przyciąć wodę
+			// "centerX" to środek toru na tym kroku
+			// Teren idzie od centerX - 600 do centerX + 600
 			const minX = centerX - 600
 			const maxX = centerX + 600
 
@@ -211,20 +210,20 @@ export const Ground: React.FC = () => {
 			const wMid = Math.max(minX + 5, Math.min(maxX - 5, rCx))
 			const wRight = Math.max(minX + 5, Math.min(maxX - 5, rCx + halfWidth + 20))
 
-			const waterSurfaceY = wY - 2.5 // Visual lower level
+			const waterSurfaceY = wY - 2.5 // Wizualnie trochę niżej
 
-			// Base Ys (Rest positions)
+			// Bazowe Y (pozycje spoczynkowe)
 			const yLeft = waterSurfaceY - edgeDrop
 			const yMid = waterSurfaceY + centerLift - 0.5
 			const yRight = waterSurfaceY - edgeDrop
 
-			// Push Positions (Initial can be flat or with static wave, doesn't matter as useFrame overwrites)
-			// But let's push BaseY to waterPos too for init
+			// Wrzucam pozycje startowe (i tak useFrame je nadpisuje)
+			// Na początek zapisuję też bazę do waterPos
 			waterPos.push(wLeft, yLeft, centerZ)
 			waterPos.push(wMid, yMid, centerZ)
 			waterPos.push(wRight, yRight, centerZ)
 
-			// Push BaseYs
+			// Zapis bazowych Y
 			waterBaseYs.push(yLeft, yMid, yRight)
 
 			if (i < endStep) {
@@ -237,7 +236,7 @@ export const Ground: React.FC = () => {
 			}
 		}
 
-		// Terrain Indices
+		// Indeksy terenu
 		for (let i = 0; i < totalGeneratedSteps - 1; i++) {
 			for (let j = 0; j < rowSize - 1; j++) {
 				const a = i * rowSize + j
@@ -257,7 +256,7 @@ export const Ground: React.FC = () => {
 
 		const wGeom = new THREE.BufferGeometry()
 		wGeom.setAttribute('position', new THREE.Float32BufferAttribute(waterPos, 3))
-		wGeom.setAttribute('baseY', new THREE.Float32BufferAttribute(waterBaseYs, 1)) // Custom attribute
+		wGeom.setAttribute('baseY', new THREE.Float32BufferAttribute(waterBaseYs, 1)) // Własny atrybut
 		wGeom.setIndex(waterInd)
 		wGeom.computeVertexNormals()
 
@@ -293,23 +292,23 @@ export const Ground: React.FC = () => {
 			const h10 = idx(row1, lowerIndex)
 			const h11 = idx(row1, upperIndex)
 
-			// Use Triangle-based interpolation to match the mesh geometry exactly
-			// Mesh indices: (0,0), (1,1), (0,1) -> Top-Right (u >= v) if u=colT, v=rowT
-			//               (0,0), (1,0), (1,1) -> Bottom-Left (v > u)
+			// Interpolacja po trójkątach, zgodna z siatką
+			// Indeksy siatki: (0,0), (1,1), (0,1) -> góra/prawa (u >= v) gdy u=colT, v=rowT
+			//                 (0,0), (1,0), (1,1) -> dół/lewa (v > u)
 			// u = colT, v = rowT
 
 			if (rowT > colT) {
-				// Triangle (0,0)-(1,0)-(1,1) [a, c, d]
-				// Height = h00 + (h10 - h00)*v + (h11 - h10)*u
+				// Trójkąt (0,0)-(1,0)-(1,1) [a, c, d]
+				// Wysokość = h00 + (h10 - h00)*v + (h11 - h10)*u
 				return h00 + (h10 - h00) * rowT + (h11 - h10) * colT
 			} else {
-				// Triangle (0,0)-(1,1)-(0,1) [a, d, b]
-				// Height = h00 + (h01 - h00)*u + (h11 - h01)*v
+				// Trójkąt (0,0)-(1,1)-(0,1) [a, d, b]
+				// Wysokość = h00 + (h01 - h00)*u + (h11 - h01)*v
 				return h00 + (h01 - h00) * colT + (h11 - h01) * rowT
 			}
 		}
 
-		// --- GENEROWANIE DRZEW (TREE PLACEMENT) ---
+		// --- GENEROWANIE DRZEW (rozmieszczanie) ---
 		const tData: { x: number; y: number; z: number; scale: number; rot: number }[] = []
 		const treeGrid = new Map<string, { x: number; z: number }[]>()
 		const minTreeSpacing = 7
@@ -346,43 +345,42 @@ export const Ground: React.FC = () => {
 		const lcg = (s: number) => () => ((2 ** 31 - 1) & (s = Math.imul(48271, s))) / 2 ** 31
 		const rng = lcg(137)
 
-		// Increased tree count for fuller environment
+		// Zwiększona liczba drzew, żeby było gęściej
 		const baseTreeCount = Math.floor(totalTrackLength * 2.5)
 
 		for (let k = 0; k < baseTreeCount; k++) {
-			// Random position along track, including extensions
-			// -100 to totalLength + 100
+			// Losowa pozycja wzdłuż toru, z marginesem
+			// -100 do totalLength + 100
 			const trD = rng() * (totalTrackLength + 200) - 100
 
-			// 1. DRZEWA PRZYTOROWE I NADRZECZNE (NEAR TRACK)
+			// 1. DRZEWA PRZYTOROWE I NADRZECZNE (blisko toru)
 			// Losujemy stronę i sprawdzamy, czy grunt nadaje się do posadzenia drzewa
 			const side = rng() > 0.5 ? 1 : -1
 			const trOff = 15 + Math.abs(rng()) * 450 // Max ~465, safe within 500
 
-			// Generate both sides occasionally
+			// Czasem generuję obie strony
 			const passCount = rng() > 0.7 ? 2 : 1
 
-			// Increase density near river at end of map
+			// Gęściej przy rzece na końcu mapy
 			const isEndRiver = trD > 3000
 			const loopCount = isEndRiver ? passCount + 1 : passCount
 
 			for (let p = 0; p < loopCount; p++) {
 				const currentSide = p === 0 ? side : -side
 
-				// 2. DRZEWA W TLE (BACKGROUND TREES)
+				// 2. DRZEWA W TLE (dalszy plan)
 				// Czasami wymuszamy drzewo daleko w tle dla głębi
 				const isFar = rng() > 0.8
-				// Max offset target: 500.
-				// If far: Start at 200, add up to 300 -> 500 max.
+				// Maksymalne przesunięcie: 500
+				// Jeśli daleko: początek 200, + do 300 -> max 500
 				const actualOff = isFar ? 200 + Math.abs(rng()) * 300 : trOff
 
-				// Force dense trees at end near river
+				// Dopychamy gęstość drzew przy końcu i rzece
 				if (isEndRiver && p === 2) {
-					// This is our extra pass
-					// River is at X=350 roughly (from getRiverCenterX)
-					// Track is nearby.
-					// Let's just try to spawn trees at global X offsets near 350+ or 350-
-					// wait, our loop works on offsets from track.
+					// To jest mój dodatkowy przebieg
+					// Rzeka jest mniej więcej przy X=350 (z getRiverCenterX)
+					// Tor jest obok
+					// Chciałem sadzić drzewa przy X~350, ale pętla działa na offsetach od toru
 				}
 
 				const tInfo = getTrackInfo(trD)
@@ -393,55 +391,55 @@ export const Ground: React.FC = () => {
 				const tx = tInfo.x + tPx * currentSide * actualOff
 				const tz = tInfo.z + tPz * currentSide * actualOff
 
-				// BOUNDS CHECK (Strict)
-				// Mesh generation usually goes up to offset ~600.
-				// We keep trees within safer bounds to ensure they are on generated geometry.
+				// Ostre sprawdzenie granic
+				// Siatka terenu dochodzi zwykle do ~600 offsetu
+				// Trzymam drzewa w bezpiecznym zakresie, żeby stały na wygenerowanej geometrii
 				if (tx < -600 || tx > 600) continue
 
-				// --- SPECIFIC FIX: MORE TREES NEAR RIVER AT END ---
-				// If we are at the end, and we accidentally picked a spot NOT near the river,
-				// let's try to bias it?
-				// Actually, simpler: just spawn EXTRA trees in a separate loop?
-				// Or just let probability handle it?
-				// User wants "more trees".
+				// --- KONKRET: WIĘCEJ DRZEW PRZY RZECE NA KOŃCU ---
+				// Jeśli jestem na końcu i trafiłem miejsce nieprzy rzece,
+				// to próbuję to dociążyć
+				// Alternatywa: osobna pętla na dodatkowe drzewa
+				// Albo zostawić to losowi
+				// Użytkownik chce "więcej drzew"
 
-				// Let's add a separate loop for river trees AFTER this main loop.
-				// For now just process this one.
+				// Docelowo dorzucić osobną pętlę dla drzew przy rzece po tej pętli
+				// Na razie lecę tą samą
 
-				// Exclude Track Area
+				// Omijam obszar toru
 				if (actualOff < 12) continue
 
-				// Avoid Station Platforms
+				// Omijam perony
 				const dToStart = Math.abs(trD - 20)
-				const dToEnd = Math.abs(trD - 4780) // NEW STATION POS
+				const dToEnd = Math.abs(trD - 4780) // Pozycja stacji końcowej
 
-				// Station Piwniczna Exclusion (Square box)
-				// Station is at d=2950, side=-1 (Left, offset ~-12)
-				// We exclude d in [2900, 3000] and offset in [-40, 20] (covering left side and track/immediate right)
-				// Note: currentSide * actualOff is the signed offset.
+				// Wykluczenie stacji Piwniczna (kwadrat)
+				// Stacja jest przy d=2950, strona=-1 (lewa, przesunięcie ~-12)
+				// Wykluczam d w [2900, 3000] i przesunięcie w [-40, 20] (lewa + tor i tuż za nim)
+				// Uwaga: currentSide * actualOff to podpisane przesunięcie
 				const signedOff = currentSide * actualOff
 				if (trD > 2900 && trD < 3000 && signedOff > -60 && signedOff < 40) continue
 
-				// But allow trees BEHIND stations (far offset)
+				// Ale pozwalam na drzewa ZA stacjami (dalekie przesunięcie)
 				const behindStation = actualOff > 100
-				if ((dToStart < 60 || dToEnd < 80) && !behindStation) continue // Increased exclusion radius for end station
+				if ((dToStart < 60 || dToEnd < 80) && !behindStation) continue // Większy bufor dla stacji końcowej
 
-				// Avoid River
+				// Omijam rzekę
 				const rCx_tree = getRiverCenterX(tz)
-				// Wider exclusion for river to prevent trees in water (River halfwidth is 150)
-				// 160 ensures they are clearly on the bank
+				// Szersze wykluczenie rzeki (połowa szerokości to 150)
+				// 160 daje pewność, że drzewa są na brzegu
 				if (Math.abs(tx - rCx_tree) < 170) continue
 
-				// Check bounds of map (Z)
-				// Our generated mesh goes from roughly -300 to totalLength+300
-				// trees should be safe.
+				// Sprawdzenie granic mapy (Z)
+				// Siatka terenu idzie mniej więcej od -300 do totalLength+300
+				// Drzewa powinny być bezpieczne
 
 				if (hasNearbyTree(tx, tz)) continue
 
 				const terrainY = sampleHeightFromGrid(trD, currentSide * actualOff)
 				if (!Number.isFinite(terrainY)) continue
 
-				// Height check: Don't spawn underwater
+				// Kontrola wysokości: bez sadzenia pod wodą
 				if (terrainY < -5) continue
 
 				const ty = terrainY - 0.2
@@ -460,33 +458,33 @@ export const Ground: React.FC = () => {
 		return { geometry: geom, treeData: tData, waterGeometry: wGeom }
 	}, [totalTrackLength, offsets])
 
-	// Water Reference for Animation
+	// Referencja wody do animacji
 	const waterRef = useRef<THREE.Mesh>(null)
 
 	useFrame(({ clock }) => {
 		if (!waterRef.current) return
 		const geo = waterRef.current.geometry
 		const pos = geo.attributes.position
-		const baseY = geo.getAttribute('baseY') // Need to check if this is valid type-wise
+		const baseY = geo.getAttribute('baseY') // Do sprawdzenia, czy typ jest OK
 
 		if (!baseY) return
 
 		const time = clock.elapsedTime
 		const count = pos.count
 
-		// We update Y based on BaseY + Sine Wave
+		// Aktualizacja Y: baza + sinusoida
 		for (let i = 0; i < count; i++) {
 			const z = pos.getZ(i)
 			const bY = baseY.getX(i)
 
-			// Identify type: 0=Left, 1=Mid, 2=Right
+			// Typ wierzchołka: 0=lewa, 1=środek, 2=prawa
 			const type = i % 3
 
-			// Flow Wave: z * 0.05 spatial freq, time * 1.5 temporal speed
+			// Fala przepływu: z * 0.05 (przestrzeń), time * 1.5 (czas)
 			const wave = Math.sin(z * 0.05 - time * 1.5) * 2.5
 
-			let factor = 0.2 // Sides move less
-			if (type === 1) factor = 1.0 // Mid moves full
+			let factor = 0.2 // Boki ruszają się mniej
+			if (type === 1) factor = 1.0 // Środek rusza się pełną falą
 
 			pos.setY(i, bY + wave * factor)
 		}
@@ -521,7 +519,7 @@ export const Ground: React.FC = () => {
 				<meshStandardMaterial {...props} side={THREE.FrontSide} displacementScale={0} />
 			</mesh>
 
-			{/* Custom Water Strip */}
+			{/* Własny pasek wody */}
 			<mesh ref={waterRef} geometry={waterGeometry}>
 				<meshStandardMaterial
 					color='#005599'

@@ -150,7 +150,7 @@ export const HUD = () => {
 		hornRef.current.volume = 0.8
 	}, [])
 
-	// Smooth Brake Visualization
+	// Wygładzona wizualizacja hamulca
 	const [visualBrake, setVisualBrake] = useState(0)
 
 	// --- OBSŁUGA WEJŚCIA (Klawiatura) ---
@@ -219,7 +219,7 @@ export const HUD = () => {
 			const brakeReleaseStep = 0.015
 
 			if (camMode === 'FOLLOW') {
-				// Throttle inputs (W/S)
+				// Wejście gazu (W/S)
 				if (keys.w || keys.arrowUp) {
 					newThrottle = Math.min(1, currentThrottle + 0.01)
 				} else if (keys.s || keys.arrowDown) {
@@ -254,7 +254,7 @@ export const HUD = () => {
 			setVisualBrake(prev => {
 				const diff = newBrake - prev
 				if (Math.abs(diff) < 0.01) return newBrake
-				return prev + diff * 0.1 // Smooth factor
+				return prev + diff * 0.1 // Współczynnik wygładzania
 			})
 
 			animationFrameId = requestAnimationFrame(loop)
@@ -468,7 +468,7 @@ const InputBar = ({ label, value, color }: { label: string; value: number; color
 					right: 0,
 					height: `${value * 100}%`,
 					background: color,
-					transition: 'none', // We control smoothness via React state/props loop
+					transition: 'none', // Wygładzanie robię w pętli stanu
 				}}
 			/>
 		</div>

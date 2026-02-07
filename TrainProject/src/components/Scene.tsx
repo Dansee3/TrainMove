@@ -22,7 +22,7 @@ export const Scene = ({ resetSignal }: { resetSignal?: number }) => {
 		},
 		flySpeed: {
 			value: 800,
-			min: 300,
+			min: 30,
 			max: 1500,
 			step: 10,
 			label: 'Prędkość Lotu',
@@ -61,7 +61,7 @@ export const Scene = ({ resetSignal }: { resetSignal?: number }) => {
 			<Ground />
 			<Track />
 			<Animals />
-			{/* MOST (Bridge) - Struktura mostu na odcinku 2050-2750m */}
+			{/* MOST - struktura na odcinku 2050-2750m */}
 			<Bridge startDist={2050} length={700} width={13} />
 
 			{/* Dynamiczne renderowanie stacji na podstawie konfiguracji (worldConfig) */}

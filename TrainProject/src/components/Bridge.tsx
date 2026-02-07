@@ -6,7 +6,7 @@ interface BridgeProps {
 	startDist: number
 	length: number
 	width: number
-	trackHeightOffset?: number // Optional adjustment if needed
+	trackHeightOffset?: number // Opcjonalna korekta wysokości
 }
 
 export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, width = 12 }) => {
@@ -23,7 +23,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 	const { deckCount, railingCount, pillarCount } = useMemo(() => {
 		return {
 			deckCount: Math.ceil(length / SEGMENT_LENGTH) + 5,
-			railingCount: (Math.ceil(length / RAILING_DIST) + 5) * 2, // Both sides
+			railingCount: (Math.ceil(length / RAILING_DIST) + 5) * 2, // Obie strony
 			pillarCount: Math.ceil(length / PILLAR_DIST) + 2,
 		}
 	}, [length])
@@ -36,7 +36,7 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 		let rIdx = 0
 		let pIdx = 0
 
-		const endDist = startDist + length // 1. SEGMENTY POMOSTU (DECK)
+		const endDist = startDist + length // 1. SEGMENTY POMOSTU
 		for (let d = startDist; d <= endDist; d += SEGMENT_LENGTH) {
 			const info = getTrackInfo(d)
 			const nextInfo = getTrackInfo(d + SEGMENT_LENGTH)
@@ -44,19 +44,19 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 			// Kąt nachylenia toru w danym punkcie
 			const h = info.heading || 0
 
-			// Pozycjonowanie: [x, wysokość - offset, z]
+			// Pozycjonowanie: [x, wysokość - przesunięcie, z]
 			// Tor jest na info.height - 0.25. Pomost dajemy nieco niżej.
 			// Ustawiamy górę pomostu na info.height - 1.0 (pod podkładami).
 
 			dummy.position.set(info.x + BRIDGE_X_OFFSET, info.height - 1, info.z)
 			dummy.rotation.set(0, h, 0)
-			dummy.scale.set(1, 1, 1) // Box is 1 unit long? No, args are fixed.
+			dummy.scale.set(1, 1, 1) // Box ma stały rozmiar z args
 			dummy.updateMatrix()
 			deckMeshRef.current.setMatrixAt(dIdx, dummy.matrix)
 			dIdx++
 		}
 
-		// 2. FILARY (PILLARS)
+		// 2. FILARY
 		for (let d = startDist + 10; d < endDist; d += PILLAR_DIST) {
 			const info = getTrackInfo(d)
 			const h = info.heading || 0
@@ -83,10 +83,10 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 			// Ustawienie pozycji (manualne transformacje dla idealnego dopasowania)
 			dummy.position.set(
 				info.x + BRIDGE_X_OFFSET + Math.cos(h) * (-width / 2 + 0.2),
-				info.height - 0.5 + 0.75, // Deck top + połowa wysokości słupka
+				info.height - 0.5 + 0.75, // Góra pomostu + połowa słupka
 				info.z + Math.sin(h) * (width / 2 - 0.2) * -1,
 			)
-			// Re-do manual transform using Object3D consistent with Deck
+			// Ponownie ustawiam transform ręcznie, spójnie z pomostem
 			dummy.position.set(info.x + BRIDGE_X_OFFSET, info.height, info.z)
 			dummy.rotation.set(0, h, 0)
 			dummy.translateX(-width / 2 + 0.2)
@@ -116,19 +116,19 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 
 	return (
 		<group>
-			{/* DECK segments (Box: width, 1.5 height, segment_length) */}
+			{/* Segmenty pomostu (Box: szerokość, 1.5 wysokość, długość segmentu) */}
 			<instancedMesh ref={deckMeshRef} args={[undefined, undefined, deckCount]} castShadow receiveShadow>
 				<boxGeometry args={[width, 1.5, SEGMENT_LENGTH + 0.1]} />
 				<meshStandardMaterial color='#444' roughness={0.8} />
 			</instancedMesh>
 
-			{/* PILLARS (Box: 3 wid, 30 hei, 3 dep) */}
+			{/* Filary (Box: 3 szer., 30 wys., 3 gł.) */}
 			<instancedMesh ref={pillarMeshRef} args={[undefined, undefined, pillarCount]} castShadow receiveShadow>
 				<boxGeometry args={[width * 0.8, 70, 4]} />
 				<meshStandardMaterial color='#555' roughness={0.9} />
 			</instancedMesh>
 
-			{/* RAILING POSTS (Box: 0.2, 1.5, 0.2) */}
+			{/* Słupki barierek (Box: 0.2, 1.5, 0.2) */}
 			<instancedMesh ref={railingMeshRef} args={[undefined, undefined, railingCount]} castShadow>
 				<boxGeometry args={[0.3, 1.5, 0.3]} />
 				<meshStandardMaterial color='#333' />

@@ -2,7 +2,7 @@ import React, { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-// --- INTELIGENTNA GŁOWA (Śledzenie Kamery) ---
+// --- INTELIGENTNA GŁOWA (śledzenie kamery) ---
 // Komponent sprawia, że zwierzęta patrzą na gracza, gdy ten się zbliży.
 export const SmartHead = ({
 	children,
@@ -86,18 +86,18 @@ export const RoeDeerModel = () => (
 
 export const RedDeerModel = () => (
 	<group scale={[1.4, 1.4, 1.4]}>
-		{/* Body */}
+		{/* Tułów */}
 		<mesh position={[0, 1.2, 0]} castShadow>
 			<boxGeometry args={[0.7, 0.9, 1.6]} />
 			<meshStandardMaterial color='#6d4c41' roughness={0.8} />
 		</mesh>
-		{/* Neck */}
+		{/* Szyja */}
 		<mesh position={[0, 1.8, 0.7]} rotation={[-Math.PI / 3, 0, 0]}>
 			<cylinderGeometry args={[0.25, 0.35, 0.8]} />
 			<meshStandardMaterial color='#5d4037' roughness={0.8} />
 		</mesh>
 
-		{/* Smart Head */}
+		{/* Sprytna głowa */}
 		<SmartHead position={[0, 2.3, 1.0]}>
 			<mesh>
 				<boxGeometry args={[0.35, 0.45, 0.6]} />
@@ -124,7 +124,7 @@ export const RedDeerModel = () => (
 			</group>
 		</SmartHead>
 
-		{/* Legs */}
+		{/* Nogi */}
 		<mesh position={[-0.3, 0.6, 0.6]}>
 			<cylinderGeometry args={[0.12, 0.1, 1.2]} />
 			<meshStandardMaterial color='#3e2723' />
@@ -152,10 +152,10 @@ export const WildBoarModel = () => (
 			<meshStandardMaterial color='#37474f' roughness={0.9} />
 		</mesh>
 
-		{/* Smart Head */}
+		{/* Sprytna głowa */}
 		<SmartHead position={[0, 0.7, 0.9]}>
 			{/* Głowa (stożkowata) */}
-			{/* Original: rotation={[Math.PI / 2, 0, 0]} */}
+			{/* Oryginalnie: rotation={[Math.PI / 2, 0, 0]} */}
 			<group rotation={[Math.PI / 2, 0, 0]}>
 				<mesh>
 					<coneGeometry args={[0.45, 1, 4]} />
@@ -178,7 +178,7 @@ export const WildBoarModel = () => (
 			</group>
 		</SmartHead>
 
-		{/* Legs - Short */}
+		{/* Nogi - krótkie */}
 		<mesh position={[-0.3, 0.3, 0.5]}>
 			<cylinderGeometry args={[0.1, 0.08, 0.6]} />
 			<meshStandardMaterial color='#212121' />

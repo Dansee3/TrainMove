@@ -306,9 +306,9 @@ export const FollowCamera = ({
 		}
 
 		if (resetSignal !== undefined && prevReset.current !== resetSignal) {
-			// Przy resecie gry, ustawiamy kamerę na domyślną, "ładną" pozycję (patrząc w przód/prawo)
-			theta.current = Math.PI * 1.1 // ~144 degrees (Behind/Left) looking Forward/Right
-			phi.current = Math.PI / 2.2 // Closer to horizontal
+			// Przy resecie gry ustawiam kamerę na domyślną, "ładną" pozycję (patrzy w przód/prawo)
+			theta.current = Math.PI * 1.1 // ok. 144 stopnie (za/lewo), patrzy w przód/prawo
+			phi.current = Math.PI / 2.2 // bliżej poziomu
 			radius.current = 110
 			prevReset.current = resetSignal
 		}
@@ -317,16 +317,16 @@ export const FollowCamera = ({
 		const offset = new THREE.Vector3().setFromSpherical(spherical)
 		const target = new THREE.Vector3().copy(tRef.position).add(offset)
 
-		// Ograniczenie celu kamery (Target Clamping) - kamera nie wyjeżdża poza mapę
+		// Ograniczenie celu kamery (przycinanie) - kamera nie wyjeżdża poza mapę
 		const clampedDist = clampToTerrainBounds(target)
 
-		// Ground Collision
+		// Kolizja z ziemią
 		const info = getTrackInfo(clampedDist)
 		// Przybliżona wysokość bazowa od toru
 		const baseHeight = info.height - 0.25
 		let terrainY = getNoiseHeight(target.x, target.z) * 1.5 + baseHeight
 
-		// Station flattening check
+		// Sprawdzenie spłaszczenia przy stacji
 		for (const s of STATION_DEFS) {
 			const dist = Math.abs(target.z - s.dist)
 			if (dist < 100) {

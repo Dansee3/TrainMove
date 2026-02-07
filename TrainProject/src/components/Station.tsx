@@ -7,7 +7,7 @@ interface StationProps {
 	name: string
 	distance: number
 	color?: string
-	side?: number // 1 for right, -1 for left
+	side?: number // 1 = prawa strona, -1 = lewa strona
 }
 
 export const Station = ({ name, distance, color = '#8B4513', side = 1 }: StationProps) => {
@@ -15,7 +15,7 @@ export const Station = ({ name, distance, color = '#8B4513', side = 1 }: Station
 		const info = getTrackInfo(distance)
 		// Obliczanie pozycji peronu względem toru.
 		// Tor ma szerokość ~2-3m. Krawędź peronu powinna być blisko.
-		// Offset 12 * side oznacza środek peronu (width=12) na 12m, czyli krawędź na 6m.
+		// Przesunięcie 12 * strona (zmienna `side`) oznacza środek peronu (szer=12) na 12m, czyli krawędź na 6m.
 		// To daje bezpieczny odstęp od osi toru.
 		const offset = 12 * side
 		const h = info.heading || 0
@@ -100,7 +100,7 @@ export const Station = ({ name, distance, color = '#8B4513', side = 1 }: Station
 					</Text>
 				</group>
 
-				{/* Big Sign on Roof? No, user wanted nicer stations. Hanging sign is good. */}
+				{/* Duży szyld na dachu? Nie, user chciał ładniejsze stacje. Wiszący szyld wystarczy. */}
 			</group>
 
 			{/* --- DETALE (Ławki, Kosze) --- */}

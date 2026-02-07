@@ -14,14 +14,22 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 	const locomotive = useGLTF('/Train.glb')
 	const carriage = useGLTF('/train_carriage.glb')
 
-	const locomotiveScale = .0025
-	const carriageScale = .9
+	const locomotiveScale = 0.0025
+	const carriageScale = 1.2
 	const locomotiveOffset: [number, number, number] = [-0.3, -2.4, 0]
-	const carriageOffset: [number, number, number] = [0, 0.15, 0]
-	const carriageSpacing = 18.5
+	const carriageOffset: [number, number, number] = [0, 0, 0]
 	const carriageCount = 4
-	const carriageHalfLength = carriageSpacing * 0.45
-	const locomotiveHalfLength = carriageSpacing * 0.5
+	const locomotiveLength = 18.5
+	const carriageLength = 24.65
+	const carriageGap = .0
+	const locomotiveHalfLength = locomotiveLength * 0.5
+	const carriageHalfLength = carriageLength * 0.5
+	const carriageSpacing = carriageLength + carriageGap
+	const firstCarriageOffset = locomotiveHalfLength + carriageHalfLength + carriageGap
+	const couplerLength = 2.6
+	const couplerHalfLength = couplerLength * 0.5
+	const couplerRadius = 0.12
+	const couplerYOffset = 1.25
 	const modelRotation: [number, number, number] = [0, Math.PI, 0]
 	const carriageRotation: [number, number, number] = [0, 1.57, 0]
 
@@ -29,6 +37,16 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 	const setCarriageRef = (index: number) => (node: THREE.Group | null) => {
 		carriageRefs.current[index] = node
 	}
+	const couplerRefs = useRef<Array<THREE.Group | null>>([])
+	const setCouplerRef = (index: number) => (node: THREE.Group | null) => {
+		couplerRefs.current[index] = node
+	}
+
+	const tempPos = useRef(new THREE.Vector3())
+	const tempEuler = useRef(new THREE.Euler())
+	const tempQuat = useRef(new THREE.Quaternion())
+	const tempPitchQuat = useRef(new THREE.Quaternion())
+	const tempAxis = useRef(new THREE.Vector3(1, 0, 0))
 
 	const applyGroupOnTrack = (group: THREE.Group | null, dist: number, halfLength: number) => {
 		if (!group) return
@@ -46,6 +64,28 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 		group.rotateX(-pitch)
 	}
 
+	const applyCouplerOnTrack = (group: THREE.Group | null, dist: number, dt: number) => {
+		if (!group) return
+		const center = getTrackInfo(dist)
+		const front = getTrackInfo(dist + couplerHalfLength)
+		const rear = getTrackInfo(dist - couplerHalfLength)
+		const dx = front.x - rear.x
+		const dy = front.height - rear.height
+		const dz = front.z - rear.z
+		const yaw = Math.atan2(dx, dz)
+		const pitch = Math.atan2(dy, Math.hypot(dx, dz))
+
+		tempPos.current.set(center.x, center.height + couplerYOffset, center.z)
+		tempEuler.current.set(0, yaw, 0, 'YXZ')
+		tempQuat.current.setFromEuler(tempEuler.current)
+		tempPitchQuat.current.setFromAxisAngle(tempAxis.current, -pitch)
+		tempQuat.current.multiply(tempPitchQuat.current)
+
+		const follow = 1 - Math.exp(-dt * 10)
+		group.position.copy(tempPos.current)
+		group.quaternion.slerp(tempQuat.current, follow)
+	}
+
 	// Stan fizyki - referencje do zmiennych mutowalnych, aby uniknąć zbędnych re-renderów
 	const velocity = useRef(0)
 	const distance = useRef(0)
@@ -60,7 +100,7 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 	const updateForces = useGameStore(s => s.updateForces)
 
 	const startStationCenter = 20
-	const startTrainDistance = startStationCenter + carriageSpacing * 2
+	const startTrainDistance = startStationCenter + firstCarriageOffset + carriageSpacing
 
 	// Inicjalizacja pozycji pociągu
 	useEffect(() => {
@@ -90,8 +130,8 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 	}, [locomotive, carriage])
 
 	useFrame((_, delta) => {
-		// ... existing physics loop ...
-		// No changes needed here, just the Init effect above.
+		// ... główna pętla fizyki ...
+		// Nic tu nie grzebię, reset ogarnia efekt wyżej.
 		if (!trainRef.current) return
 
 		// Ograniczenie kroku czasowego (time step clamping) dla zachowania stabilności symulacji
@@ -99,7 +139,7 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 
 		// 1. Pobranie danych o torze i otoczeniu
 
-		// LOGIKA WYGŁADZANIA NACHYLENIA (SMOOTH SLOPE):
+		// LOGIKA WYGŁADZANIA NACHYLENIA (wygładzanie):
 		// Zamiast brać natychmiastowe nachylenie segmentu (które może gwałtownie skakać),
 		// obliczamy nachylenie na długości lokomotywy (~10m), co daje bardziej naturalne zachowanie.
 		const frontInfo = getTrackInfo(distance.current + 5)
@@ -123,13 +163,13 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 		const m = mass * massMultiplier
 		const v = velocity.current
 
-		// Logika stopniowego hamowania (Gradual Braking)
+		// Logika stopniowego hamowania
 		// Hamulce pociągu aplikują się szybciej niż zwalniają (symulacja hamulców pneumatycznych)
 		const brakeApplyRate = 0.6 // ~1.6s do pełnego zahamowania
 		const brakeReleaseRate = 0.2 // ~5s do pełnego zwolnienia hamulca
 
 		if (smoothedBrake.current < brake) {
-			// Applying brakes
+			// Zaciąganie hamulca
 			smoothedBrake.current = Math.min(brake, smoothedBrake.current + brakeApplyRate * dt)
 		} else {
 			// Zwalnianie hamulców
@@ -141,7 +181,7 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 		const F_normal = m * g * Math.cos(angle)
 		const speedAbs = Math.abs(v)
 		const safeSpeed = Math.max(speedAbs, 1.0)
-		// Realistic: cut traction when brakes are applied
+		// Realistycznie: odcinam napęd podczas hamowania
 		const effectiveThrottle = brake > 0 ? 0 : throttle
 		let F_drive = (effectiveThrottle * maxPower * powerMultiplier) / safeSpeed
 		const maxAdhesion = 0.3 * F_normal
@@ -204,8 +244,18 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 
 		applyGroupOnTrack(trainRef.current, distance.current, locomotiveHalfLength)
 		for (let i = 0; i < carriageCount; i += 1) {
-			const carriageDist = distance.current - carriageSpacing * (i + 1)
+			const carriageDist = distance.current - firstCarriageOffset - carriageSpacing * i
 			applyGroupOnTrack(carriageRefs.current[i], carriageDist, carriageHalfLength)
+		}
+		for (let i = 0; i < carriageCount; i += 1) {
+			const couplerDist =
+				i === 0
+					? distance.current - (locomotiveHalfLength + carriageGap * 0.5)
+					: distance.current -
+						firstCarriageOffset -
+						carriageSpacing * (i - 1) -
+						(carriageHalfLength + carriageGap * 0.5)
+			applyCouplerOnTrack(couplerRefs.current[i], couplerDist, dt)
 		}
 
 		updatePhysics(velocity.current, distance.current)
@@ -214,7 +264,7 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 			friction: isStopped ? 0 : -Math.sign(v) * rollingResistanceMag,
 			airResistance: F_air,
 			drive: F_drive,
-			brake: isStopped && F_total === 0 ? -F_gravity : -Math.sign(v) * brakingForceMag, // Show holding force if stopped? Or just max potential? Let's show applied.
+			brake: isStopped && F_total === 0 ? -F_gravity : -Math.sign(v) * brakingForceMag, // Przy postoju pokazuję siłę trzymania, w ruchu realnie przyłożoną.
 			slope: angle,
 		})
 	})
@@ -236,6 +286,19 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 							<Clone object={carriage.scene} />
 						</group>
 					</Suspense>
+				</group>
+			))}
+
+			{Array.from({ length: carriageCount }).map((_, index) => (
+				<group key={`coupler-${index}`} ref={setCouplerRef(index)}>
+					<mesh castShadow>
+						<boxGeometry args={[couplerRadius * 2.2, couplerRadius * 0.7, couplerLength]} />
+						<meshStandardMaterial color='#6b7280' metalness={0.9} roughness={0.2} emissive='#111111' />
+					</mesh>
+					<mesh position={[0, 0, -couplerLength * 0.5]} castShadow>
+						<boxGeometry args={[0.28, 0.18, 0.24]} />
+						<meshStandardMaterial color='#4b5563' metalness={0.7} roughness={0.3} emissive='#0b0b0b' />
+					</mesh>
 				</group>
 			))}
 		</>

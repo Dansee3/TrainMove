@@ -8,7 +8,7 @@ export const TRACK_SEGMENTS = [
 	{ length: 600, angle: 0.05, turn: -0.4 }, // Bardziej stromy podjazd z wyraźnym skrętem w lewo
 	{ length: 400, angle: 0, turn: 0.3 }, // Płaskowyż z łukiem w prawo (stabilizacja wysokości)
 	{ length: 600, angle: -0.03, turn: -0.25 }, // Zjazd do doliny z łukiem w lewo (koniec odcinka ~2200m)
-	{ length: 400, angle: 0, turn: 0 }, // MOST (Bridge) - 400m prostej i płaskiej trasy (2200-2600m), środek ~2400m
+	{ length: 400, angle: 0, turn: 0 }, // MOST - 400m prostej i płaskiej trasy (2200-2600m), środek ~2400m
 	{ length: 200, angle: 0, turn: 0 }, // Odcinek buforowy za mostem (2600-2800m)
 	{ length: 300, angle: 0, turn: 0 }, // Stacja "Piwniczna Zdrój" (2800-3100m) - potencjalny przystanek
 	// Cel: całkowita długość ~4800m. Obecnie: 3100m.
@@ -22,7 +22,7 @@ export const TRACK_SEGMENTS = [
 export const getTrackInfo = (distance: number) => {
 	let currentDist = 0
 	let currentHeight = 0
-	let currentHeading = 0 // heading in radians, 0 == +Z0
+	let currentHeading = 0 // kierunek w radianach, 0 == +Z
 	let currentX = 0
 	let currentZ = 0
 
@@ -36,11 +36,11 @@ export const getTrackInfo = (distance: number) => {
 		// Rozszerzamy po prostu wzdłuż osi Z na minusie.
 		return {
 			angle: firstSeg.angle,
-			height: distance * Math.sin(firstSeg.angle), // likely 0 if flat
+			height: distance * Math.sin(firstSeg.angle), // zwykle 0, jeśli płasko
 			finished: false,
 			heading: 0,
 			x: 0 + distance * Math.sin(0), // 0
-			z: 0 + distance * Math.cos(0), // distance (negative)
+			z: 0 + distance * Math.cos(0), // dystans (ujemny)
 			curvature: 0,
 		}
 	}
@@ -57,7 +57,7 @@ export const getTrackInfo = (distance: number) => {
 
 			// Przybliżona projekcja pozioma lokalnego dystansu
 			const localHorizontal = local * Math.cos(segSlope)
-			// approximate mid-heading for better coordinate estimate
+			// przybliżony kierunek pośrodku segmentu dla lepszego wyliczenia współrzędnych
 			const midHeading = currentHeading + segTurn * (local / segLength) * 0.5
 			const dx = localHorizontal * Math.sin(midHeading)
 			const dz = localHorizontal * Math.cos(midHeading)
@@ -96,7 +96,7 @@ export const getTrackInfo = (distance: number) => {
 
 	return {
 		angle: 0,
-		height: currentHeight, // flat extension
+		height: currentHeight, // płaskie przedłużenie
 		finished: true,
 		heading: currentHeading,
 		x: currentX + lx,

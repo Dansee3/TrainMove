@@ -19,34 +19,34 @@ interface GameState {
 	velocity: number // m/s
 	mass: number // kg
 	distance: number // m
-	totalDistance: number // m (approx length of track)
+	totalDistance: number // m (przybliżona długość trasy)
 	cameraMode: 'FOLLOW' | 'FREECAM'
 
 	// Sekcja Fizyki i Sterowania
 	physicsParams: {
 		frictionCoefficient: number
 		airResistance: number
-		maxPower: number // Watts
-		brakeForceMax: number // Newtons
+		maxPower: number // W
+		brakeForceMax: number // N
 		brakeAdhesionCoeff: number
-		extraFriction: number // Newtons (T+)
+		extraFriction: number // N (T+)
 		massMultiplier: number
 		powerMultiplier: number
 		maxSpeedLimit: number // m/s
 	}
-	// Stan sił w czasie rzeczywistym (do wyświetlania w HUD)
+	// Stan sił w czasie rzeczywistym (do HUD)
 	forceState: {
 		gravity: number
 		friction: number
 		airResistance: number
 		drive: number
 		brake: number
-		slope: number // radians
+		slope: number // rad
 	}
 	throttle: number // 0-1
 	brake: number // 0-1
 
-	// Akcje (Actions)
+	// Akcje
 	setTrainState: (state: TrainStateType) => void
 	setCameraMode: (mode: 'FOLLOW' | 'FREECAM') => void
 	updatePhysics: (velocity: number, distance: number) => void
@@ -66,7 +66,7 @@ export const useGameStore = create<GameState>(set => ({
 	velocity: 0,
 	mass: BASE_TRAIN_MASS,
 	distance: 0,
-	totalDistance: 3500, // Safe estimate
+	totalDistance: 3500, // Bezpieczne przybliżenie
 	boardingStep: 0,
 	resetSignal: 0,
 	cameraMode: 'FOLLOW',

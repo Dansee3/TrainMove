@@ -9,7 +9,7 @@ import { getTrackInfo } from './trackUtils'
 // Pomocnicza funkcja obliczająca pozycję pasażera z przesunięciem względem toru
 const getPassengerPosition = (distance: number, offsetSide: number = 2.5) => {
 	const { x, z, heading, height } = getTrackInfo(distance)
-	// Perpendicular vector
+	// Wektor prostopadły
 	const dx = Math.cos(heading) * offsetSide
 	const dz = -Math.sin(heading) * offsetSide
 	return new THREE.Vector3(x + dx, height, z + dz)
@@ -53,10 +53,10 @@ const AnimatedPassenger = ({
 	useFrame((state, delta) => {
 		if (!groupRef.current) return
 
-		// Płynne przejście widoczności (fade-in / fade-out)
+		// Płynne przejście widoczności (pojawia/zanika)
 		const targetOpacity = visible ? 1 : 0
 		if (opacity !== targetOpacity) {
-			const step = delta * 5 // Fade speed
+			const step = delta * 5 // Szybkość zanikania
 			const newOpacity = THREE.MathUtils.lerp(opacity, targetOpacity, step)
 			setOpacity(newOpacity)
 		}
@@ -75,7 +75,7 @@ const AnimatedPassenger = ({
 				// Animacja "bobbing" (symulacja kroków w osi Y)
 				groupRef.current.position.y = Math.max(startPos.y, startPos.y + Math.sin(state.clock.elapsedTime * 20) * 0.05)
 			} else {
-				// Arrived
+				// Dotarł
 				finishedRef.current = true
 				if (onFinishMove) onFinishMove()
 			}
@@ -125,7 +125,7 @@ export const Passengers = () => {
 			{ name: 'Sebastian', dist: 14, offset: 6, color: '#ef4444', weight: 71 },
 			{ name: 'Rimald', dist: 16, offset: 6.2, color: '#f59e0b', weight: 80 },
 			{ name: 'K_vanSant', dist: 18, offset: 6.5, color: '#10b981', weight: 500 },
-			// Passengers moved from Nowy Sącz to Krynica
+			// Pasażerowie przeniesieni z Nowego Sącza do Krynicy
 			{ name: 'Paweł SZ', dist: 22, offset: 6, color: '#8b5cf6', weight: 87 },
 			{ name: 'Deltsaber', dist: 24, offset: 6.5, color: '#ec4899', weight: 70 },
 			{ name: 'Stefankus', dist: 26, offset: 6, color: '#06b6d4', weight: 92 },
@@ -141,21 +141,21 @@ export const Passengers = () => {
 		() =>
 			startPassengersData.map((p, i) => ({
 				...p,
-				dist: 4767 + (i - 4) * 1.5, // Spread out on platform at destination
-				offset: -6, // Target platform offset
+				dist: 4767 + (i - 4) * 1.5, // Rozsiane na peronie końcowym
+				offset: -6, // Przesunięcie docelowego peronu
 			})),
 		[startPassengersData],
 	)
 
 	// --- LOGIKA STANU I SEKWENCJI RUCHU ---
 
-	// Reset boarding step when arriving so we can reuse logic for deboarding?
-	// Or use different state.
-	// BOARDING: step 0 -> 1 -> 2 -> 3 -> 4 (Move train)
-	// DEBOARDING: step 0 -> 1 -> 2 -> 3 -> 4 (Finish)
+	// Reset kroku przy dojeździe, żeby użyć tej samej logiki do wysiadania?
+	// Albo osobny stan.
+	// WSIADANIE: krok 0 -> 1 -> 2 -> 3 -> 4 (ruszenie pociągu)
+	// WYSIADANIE: krok 0 -> 1 -> 2 -> 3 -> 4 (koniec)
 
-	// Separate effect to handle transitions?
-	// We handle step changes via onFinishMove callbacks.
+	// Osobny efekt na przejścia?
+	// Na razie kroki zmieniam w callbackach onFinishMove.
 
 	return (
 		<group>
@@ -199,10 +199,10 @@ export const Passengers = () => {
 								addToMass(p.weight)
 								const nextStep = boardingStep + 1
 								setBoardingStep(nextStep)
-								// Check if all boarded
+								// Sprawdzam, czy wszyscy wsiedli
 								if (nextStep >= startPassengersData.length) {
-									// All boarded!
-									// Wait a moment? or immediate.
+									// Wszyscy wsiedli
+									// Chwila pauzy czy od razu?
 									setTimeout(() => setTrainState(TrainState.MOVING), 500)
 								}
 							}
@@ -214,25 +214,23 @@ export const Passengers = () => {
 			{/* GRUPA 2: Wysiadający pasażerowie (Nowy Sącz) */}
 			{arrivingPassengersData.map((p, i) => {
 				const doorPos = getPassengerPosition(p.dist, 3.0)
-				// Common station exit point for everyone (Visual cleanup)
-				// Station building at ~4780? Let's target side.
+				// Wspólny punkt wyjścia (ładniejszy obrazek)
+				// Budynek stacji ~4780? Celuję obok.
 				const exitPos = getPassengerPosition(4780, -12)
 
 				const isDeboarding = trainState === TrainState.DEBOARDING
 
-				// "Two by Two" logic
-				// i // 2  == boardingStep // 2
-				// We increment boardingStep by 1 each time a *batch* or *person* finishes?
-				// Let's increment boardingStep by 1 per person to keep state simple,
-				// but 'shouldMove' condition is wider.
-				// If we want 2 people to move simultaneously, their 'turn' must be active together.
-				// If boardingStep = 0. Passengers 0 and 1 move.
-				// When BOTH finish, we add +2 to boardingStep? Or independent?
-				// Simplest: shouldMove = isDeboarding && (i >= boardingStep && i < boardingStep + 2)
-				// And we only increment boardingStep when the "leader" (even index) finishes? Or both?
-				// Let's use independent finishing. When p[i] finishes, it triggers increment?
-				// Risk: race condition.
-				// Better: Just check strictly:
+				// Logika "po dwóch"
+				// i // 2 == boardingStep // 2
+				// Zwiększać boardingStep po całej parze czy po każdej osobie?
+				// Dla prostoty: +1 na osobę, a warunek shouldMove jest szerszy.
+				// Jeśli chcę 2 osoby naraz, ich "tura" musi się pokrywać.
+				// Gdy boardingStep = 0, ruszają 0 i 1.
+				// Gdy obie skończą, krok rośnie do 2.
+				// Najprościej: shouldMove = isDeboarding && (i >= boardingStep && i < boardingStep + 2)
+				// A krok zwiększam przy każdej osobie.
+				// Ryzyko: wyścig.
+				// Lepiej: sprawdzać batchy na sztywno.
 
 				const batchIndex = Math.floor(i / 2)
 				const currentBatch = Math.floor(boardingStep / 2)
@@ -240,12 +238,12 @@ export const Passengers = () => {
 				// Ruszają się, jeśli to tura ich pary (batcha)
 				const shouldMove = isDeboarding && batchIndex === currentBatch
 
-				// Visible if:
-				// 1. I haven't finished moving yet (boardingStep <= i ?? No, logic is batch based)
-				// 2. Actually, user wants them to "disappear".
-				// So visible only during deboarding until they reach target.
-				// We can track local "finished" state or deduce from boardingStep.
-				// If batchIndex < currentBatch, I am done -> Invisible.
+				// Widoczność:
+				// 1. Jeszcze nie skończyłem ruchu (tu batchy, nie per osoba)
+				// 2. Użytkownik chce, żeby "znikali" po dojściu
+				// Czyli widać tylko podczas wysiadania, aż do celu
+				// Można trzymać lokalny stan albo wyliczać z boardingStep
+				// Jeśli batchIndex < currentBatch, to już znikam
 
 				const isDone = batchIndex < currentBatch
 				const isVisible = isDeboarding && !isDone
@@ -265,16 +263,16 @@ export const Passengers = () => {
 							if (useGameStore.getState().resetSignal !== resetSignal) return
 							if (isDeboarding) {
 								addToMass(-p.weight)
-								// Increment boarding step
-								// To avoid double stepping for pairs, we need to be careful.
-								// Each person calls this.
-								// If we just increments +1, the next person in pair (i+1) is also in same batch?
-								// i=0, i=1. Batch 0.
-								// i=0 finishes -> step becomes 1.
-								// i=1 finishes -> step becomes 2.
-								// Batch for step 1 is 0 (1/2 = 0). So i=1 still moves.
-								// Batch for step 2 is 1. So i=2, i=3 start moving.
-								// This works perfectly for "+1" logic!
+								// Zwiększam krok
+								// Trzeba uważać na duble w parach
+								// Każda osoba wywołuje ten blok
+								// Jeśli +1, to druga osoba z pary nadal jest w tym samym batchu
+								// i=0, i=1 to batch 0
+								// i=0 kończy -> krok 1
+								// i=1 kończy -> krok 2
+								// Batch dla kroku 1 to 0, więc i=1 nadal się rusza
+								// Batch dla kroku 2 to 1, więc ruszają i=2, i=3
+								// To działa dobrze przy logice "+1"
 
 								const nextStep = boardingStep + 1
 								setBoardingStep(nextStep)
