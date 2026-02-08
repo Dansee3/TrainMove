@@ -1,16 +1,9 @@
-import React, { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { getTrackInfo, TRACK_SEGMENTS } from './trackUtils'
 import { getNoiseHeight } from '../utils/noise'
 import { STATION_DEFS } from './worldConfig'
-
-type WorldBounds = {
-	minX: number
-	maxX: number
-	minZ: number
-	maxZ: number
-}
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -60,8 +53,33 @@ const estimateTrackDistance = (position: THREE.Vector3) => {
 	return bestDist
 }
 
-const clampToTerrainBounds = (position: THREE.Vector3) => {
-	const nearestDist = estimateTrackDistance(position)
+const estimateTrackDistanceNear = (position: THREE.Vector3, hintDist?: number) => {
+	if (hintDist === undefined) return estimateTrackDistance(position)
+
+	const window = TRACK_SEARCH_STEP * 6
+	let bestDist = hintDist
+	let bestSq = Number.POSITIVE_INFINITY
+
+	const start = Math.max(0, hintDist - window)
+	const end = Math.min(TOTAL_TRACK_LENGTH, hintDist + window)
+	for (let d = start; d <= end; d += TRACK_REFINE_STEP) {
+		const info = getTrackInfo(d)
+		const dx = position.x - info.x
+		const dz = position.z - info.z
+		const sq = dx * dx + dz * dz
+		if (sq < bestSq) {
+			bestSq = sq
+			bestDist = d
+		}
+	}
+
+	const farThreshold = MAX_SIDE_OFFSET * 2 * (MAX_SIDE_OFFSET * 2)
+	if (bestSq > farThreshold) return estimateTrackDistance(position)
+	return bestDist
+}
+
+const clampToTerrainBounds = (position: THREE.Vector3, hintDist?: number) => {
+	const nearestDist = estimateTrackDistanceNear(position, hintDist)
 	const nearestInfo = getTrackInfo(nearestDist)
 	const h = nearestInfo.heading || 0
 	const rightX = Math.cos(h)
@@ -88,60 +106,6 @@ const clampToTerrainBounds = (position: THREE.Vector3) => {
 	return clampedDist
 }
 
-const buildWorldBounds = (): WorldBounds => {
-	const totalSteps = Math.ceil(TOTAL_TRACK_LENGTH / TRACK_STEP)
-	const maxOffset = 600
-	const margin = 50
-
-	let minX = Infinity
-	let maxX = -Infinity
-	let minZ = Infinity
-	let maxZ = -Infinity
-
-	for (let i = -EXTEND_STEPS; i <= totalSteps + EXTEND_STEPS; i++) {
-		const d = i * TRACK_STEP
-		const clampedD = clamp(d, 0, TOTAL_TRACK_LENGTH)
-		const info = getTrackInfo(clampedD)
-		const delta = d - clampedD
-		const h = info.heading || 0
-		const px = Math.cos(h)
-		const pz = -Math.sin(h)
-		const tx = Math.sin(h)
-		const tz = Math.cos(h)
-
-		const centerX = info.x + tx * delta
-		const centerZ = info.z + tz * delta
-
-		const leftX = centerX + px * -maxOffset
-		const leftZ = centerZ + pz * -maxOffset
-		const rightX = centerX + px * maxOffset
-		const rightZ = centerZ + pz * maxOffset
-
-		minX = Math.min(minX, leftX, rightX)
-		maxX = Math.max(maxX, leftX, rightX)
-		minZ = Math.min(minZ, leftZ, rightZ)
-		maxZ = Math.max(maxZ, leftZ, rightZ)
-	}
-
-	if (!isFinite(minX) || !isFinite(maxX)) {
-		minX = -700
-		maxX = 700
-	}
-	if (!isFinite(minZ) || !isFinite(maxZ)) {
-		minZ = -100
-		maxZ = TOTAL_TRACK_LENGTH + 200
-	}
-
-	return {
-		minX: minX - margin,
-		maxX: maxX + margin,
-		minZ: minZ - margin,
-		maxZ: maxZ + margin,
-	}
-}
-
-const WORLD_BOUNDS = buildWorldBounds()
-
 // --- KOMPONENT INTUICYJNEGO STEROWANIA WSAD ---
 export const SpectatorControls = ({ speed }: { speed: number }) => {
 	const { camera, gl } = useThree()
@@ -149,6 +113,7 @@ export const SpectatorControls = ({ speed }: { speed: number }) => {
 	const mouse = useRef({ x: 0, y: 0, isDown: false })
 	const rotation = useRef({ yaw: 0, pitch: 0 })
 	const isInitialized = useRef(false)
+	const lastTrackDist = useRef<number | undefined>(undefined)
 
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => (keys.current[e.code] = true)
@@ -198,8 +163,8 @@ export const SpectatorControls = ({ speed }: { speed: number }) => {
 		if (keys.current['KeyS']) moveVector.z += 1
 		if (keys.current['KeyA']) moveVector.x -= 1
 		if (keys.current['KeyD']) moveVector.x += 1
-		if (keys.current['KeyR']) moveVector.y += 1
-		if (keys.current['KeyF']) moveVector.y -= 1
+		if (keys.current['KeyR'] || keys.current['Space']) moveVector.y += 1
+		if (keys.current['KeyF'] || keys.current['ShiftLeft'] || keys.current['ShiftRight']) moveVector.y -= 1
 
 		if (moveVector.length() > 0) {
 			moveVector.normalize()
@@ -209,7 +174,8 @@ export const SpectatorControls = ({ speed }: { speed: number }) => {
 
 		// --- ŚCISŁE GRANICE MAPY (Blokada kamery) ---
 		// Blokujemy pozycję kamery, aby gracz nie wyleciał poza wygenerowany świat gry.
-		const clampedDist = clampToTerrainBounds(camera.position)
+		const clampedDist = clampToTerrainBounds(camera.position, lastTrackDist.current)
+		lastTrackDist.current = clampedDist
 
 		// Detekcja kolizji z terenem
 		// Obliczamy dokładną wysokość terenu pod kamerą, aby nie wpadła pod ziemię.
@@ -228,7 +194,7 @@ export const SpectatorControls = ({ speed }: { speed: number }) => {
 		}
 
 		// Utrzymywanie minimalnej wysokości nad terenem (2.0 jednostki)
-		const minY = terrainY + 2.0
+		const minY = terrainY + 3.0
 		if (camera.position.y < minY) camera.position.y = minY
 		if (camera.position.y > MAX_CAMERA_Y) camera.position.y = MAX_CAMERA_Y
 	})
@@ -251,6 +217,7 @@ export const FollowCamera = ({
 	const prev = useRef<{ x: number; y: number } | null>(null)
 	const prevReset = useRef<number | undefined>(undefined)
 	const isInitialized = useRef(false)
+	const lastTrackDist = useRef<number | undefined>(undefined)
 
 	useEffect(() => {
 		const el = gl.domElement
@@ -307,8 +274,8 @@ export const FollowCamera = ({
 
 		if (resetSignal !== undefined && prevReset.current !== resetSignal) {
 			// Przy resecie gry ustawiam kamerę na domyślną, "ładną" pozycję (patrzy w przód/prawo)
-			theta.current = Math.PI * 1.1 // ok. 144 stopnie (za/lewo), patrzy w przód/prawo
-			phi.current = Math.PI / 2.2 // bliżej poziomu
+			theta.current = Math.PI * 1.05 // ok. 144 stopnie (za/lewo), patrzy w przód/prawo
+			phi.current = Math.PI / 2.3 // bliżej poziomu
 			radius.current = 110
 			prevReset.current = resetSignal
 		}
@@ -318,7 +285,8 @@ export const FollowCamera = ({
 		const target = new THREE.Vector3().copy(tRef.position).add(offset)
 
 		// Ograniczenie celu kamery (przycinanie) - kamera nie wyjeżdża poza mapę
-		const clampedDist = clampToTerrainBounds(target)
+		const clampedDist = clampToTerrainBounds(target, lastTrackDist.current)
+		lastTrackDist.current = clampedDist
 
 		// Kolizja z ziemią
 		const info = getTrackInfo(clampedDist)

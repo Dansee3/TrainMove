@@ -57,13 +57,20 @@ styleSheet.innerText = `
 /* LEVA ADJUSTMENT */
 .leva-c {
     top: 50px !important; /* Move down/increase offset */
+	min-height: 570px;
+	height: auto;
+	max-height: none;
+}
+
+.leva-c .leva-c {
+	max-height: none;
 }
 
 /* FLASHING TUTORIAL */
-@keyframes flashRedYellow {
-    0% { color: #f87171; opacity: 1; }
-    50% { color: #facc15; opacity: 1; }
-    100% { color: #f87171; opacity: 1; }
+@keyframes flashTealPeach {
+	0% { color: rgb(35, 184, 184); opacity: 1; }
+	50% { color: #f7dbc7; opacity: 1; }
+	100% { color: rgb(35, 184, 184); opacity: 1; }
 }
 
 .tutorial-flash {
@@ -73,22 +80,51 @@ styleSheet.innerText = `
     font-size: 24px;
     text-align: center;
     text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-    animation: flashRedYellow 1s infinite;
+    animation: flashTealPeach 1s infinite;
     background: rgba(0,0,0,0.6);
     padding: 10px 20px;
     border-radius: 8px;
     white-space: pre-line;
 }
+
+.status-flash {
+    animation: flashTealPeach 1s infinite;
+}
+
+.manual-grid {
+	display: grid;
+	grid-template-columns: 110px 1fr;
+	column-gap: 8px;
+	row-gap: 6px;
+	color: #aaa;
+	padding: 6px 4px 2px;
+}
+
+.manual-key {
+	color: #fff;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.manual-action {
+	white-space: nowrap;
+}
 `
 document.head.appendChild(styleSheet)
 
-const TutorialOverlay = () => {
+const TutorialOverlay = ({ enabled }: { enabled: boolean }) => {
 	const cameraMode = useGameStore(s => s.cameraMode)
 	const [visible, setVisible] = useState(false)
 	const [text, setText] = useState('')
-	const timeoutRef = useRef<number>()
+	const timeoutRef = useRef<number | null>(null)
 
 	useEffect(() => {
+		if (!enabled) {
+			setVisible(false)
+			if (timeoutRef.current) clearTimeout(timeoutRef.current)
+			return
+		}
+
 		setVisible(true)
 		if (cameraMode === 'FOLLOW') {
 			setText("CLICK & DRAG TO ROTATE.\nHOLD 'W' TO ACCELERATE.\n'S' TO DECELERATE.\nSPACE - BRAKE.\n'K' - HORN.")
@@ -104,7 +140,7 @@ const TutorialOverlay = () => {
 		return () => {
 			if (timeoutRef.current) clearTimeout(timeoutRef.current)
 		}
-	}, [cameraMode])
+	}, [cameraMode, enabled])
 
 	if (!visible) return null
 
@@ -112,7 +148,7 @@ const TutorialOverlay = () => {
 		<div
 			style={{
 				position: 'absolute',
-				top: '20%',
+				top: '10%',
 				left: '50%',
 				transform: 'translateX(-50%)',
 				pointerEvents: 'none',
@@ -126,7 +162,7 @@ const TutorialOverlay = () => {
 	)
 }
 
-export const HUD = () => {
+export const HUD = ({ isLoading }: { isLoading: boolean }) => {
 	const {
 		trainState,
 		velocity,
@@ -280,10 +316,12 @@ export const HUD = () => {
 	const speedKmh = Math.abs(velocity * 3.6)
 	const speedDisplay = speedKmh.toFixed(2).padStart(6, '0')
 	const progressPercent = Math.min(100, Math.max(0, (distance / totalDistance) * 100))
+	const isBoarding = trainState === 'BOARDING'
+	const statusColor = trainState === 'MOVING' ? '#4ade80' : trainState === 'ARRIVING' ? '#facc15' : '#fff'
 
 	return (
 		<div className='eng-hud' style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-			<TutorialOverlay />
+			<TutorialOverlay enabled={!isLoading} />
 
 			{/* GÓRNY PASEK - STATUS (Top Center) */}
 			<div
@@ -302,9 +340,10 @@ export const HUD = () => {
 						SYSTEM STATUS
 					</span>
 					<span
+						className={isBoarding ? 'status-flash' : undefined}
 						style={{
 							fontWeight: 700,
-							color: trainState === 'MOVING' ? '#4ade80' : trainState === 'ARRIVING' ? '#facc15' : '#fff',
+							color: isBoarding ? undefined : statusColor,
 						}}>
 						{trainState}
 					</span>
@@ -356,20 +395,24 @@ export const HUD = () => {
 					<div className='eng-label' style={{ marginBottom: 4 }}>
 						MANUAL CONTROL ({cameraMode === 'FOLLOW' ? 'TRAIN' : 'FREE CAM'})
 					</div>
-					<div style={{ fontSize: 11, display: 'grid', gridTemplateColumns: '40px 1fr', gap: 4, color: '#aaa' }}>
+					<div className='manual-grid' style={{ fontSize: 11 }}>
 						{cameraMode === 'FOLLOW' ? (
 							<>
-								<span style={{ color: '#fff', fontWeight: 600 }}>W</span> <span>Increase Power</span>
-								<span style={{ color: '#fff', fontWeight: 600 }}>S</span> <span>Decrease Power</span>
-								<span style={{ color: '#fff', fontWeight: 600 }}>SPACE</span> <span>Brake</span>
-								<span style={{ color: '#fff', fontWeight: 600 }}>K</span> <span>Horn</span>
+								<span className='manual-key'>W</span> <span className='manual-action'>Increase Power</span>
+								<span className='manual-key'>S</span> <span className='manual-action'>Decrease Power</span>
+								<span className='manual-key'>SCROLL UP</span> <span className='manual-action'>Zoom In</span>
+								<span className='manual-key'>SCROLL DOWN</span> <span className='manual-action'>Zoom Out</span>
+								<span className='manual-key'>SPACE</span> <span className='manual-action'>Brake</span>
+								<span className='manual-key'>K</span> <span className='manual-action'>Horn</span>
 							</>
 						) : (
 							<>
-								<span style={{ color: '#fff', fontWeight: 600 }}>WASD</span> <span>Move Camera</span>
-								<span style={{ color: '#fff', fontWeight: 600 }}>E</span> <span>Train Power</span>
-								<span style={{ color: '#fff', fontWeight: 600 }}>Q</span> <span>Train Brake</span>
-								<span style={{ color: '#fff', fontWeight: 600 }}>K</span> <span>Horn</span>
+								<span className='manual-key'>WASD</span> <span className='manual-action'>Move Camera</span>
+								<span className='manual-key'>SPACE</span> <span className='manual-action'>Move Up</span>
+								<span className='manual-key'>SHIFT</span> <span className='manual-action'>Move Down</span>
+								<span className='manual-key'>E</span> <span className='manual-action'>Train Power</span>
+								<span className='manual-key'>Q</span> <span className='manual-action'>Train Brake</span>
+								<span className='manual-key'>K</span> <span className='manual-action'>Horn</span>
 							</>
 						)}
 					</div>

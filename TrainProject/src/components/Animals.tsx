@@ -77,7 +77,7 @@ const generateAnimals = (): Animal[] => {
 				const distToRiver = Math.abs(finalX - rCx)
 
 				let isWater = false
-				if (distToRiver < 160) isWater = true // Bufor rzeki
+				if (distToRiver < 220) isWater = true // Bufor rzeki
 				if (y < -3) isWater = true // Dodatkowy próg wysokości
 
 				if (!isWater) {

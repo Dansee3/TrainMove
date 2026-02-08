@@ -20,6 +20,13 @@ export const Scene = ({ resetSignal }: { resetSignal?: number }) => {
 			value: 'Śledzenie Pociągu',
 			label: 'Tryb Kamery',
 		},
+		hudSpacer: {
+			value: '',
+			disabled: true,
+			step: 0,
+			label: '',
+			render: get => get('Kamera.cameraMode') === 'Śledzenie Pociągu',
+		},
 		flySpeed: {
 			value: 800,
 			min: 30,
@@ -37,13 +44,30 @@ export const Scene = ({ resetSignal }: { resetSignal?: number }) => {
 		setCameraMode(cameraMode === 'FreeCam' ? 'FREECAM' : 'FOLLOW')
 	}, [cameraMode, setCameraMode])
 
+	useEffect(() => {
+		const frame = window.requestAnimationFrame(() => {
+			const root = document.querySelector('.leva-c')
+			if (!root) return
+			const labels = root.querySelectorAll('label')
+			labels.forEach(label => {
+				if (label.textContent?.trim() !== 'HUD_SPACER') return
+				const row = label.parentElement?.parentElement ?? label.parentElement
+				if (!row) return
+				const rowEl = row as HTMLElement
+				rowEl.style.opacity = '0'
+				rowEl.style.pointerEvents = 'none'
+			})
+		})
+		return () => window.cancelAnimationFrame(frame)
+	}, [cameraMode])
+
 	const { camera } = useThree()
 
 	// Wstępna konfiguracja kamery (uruchamiana tylko raz przy starcie)
 	useEffect(() => {
 		// Ustawienie widoku "w głąb mapy" (pozycja z tyłu, skierowana na +Z)
 		// Pozycja za pociągiem (-Z), patrząca w kierunku stacji docelowej.
-		camera.position.set(-250, 40, -150)
+		camera.position.set(-270, 40, -50)
 	}, [])
 
 	const isFollowing = cameraMode === 'Śledzenie Pociągu'
@@ -52,7 +76,8 @@ export const Scene = ({ resetSignal }: { resetSignal?: number }) => {
 
 	return (
 		<>
-			<PerspectiveCamera makeDefault fov={45} far={10000} />
+			<color attach='background' args={['#000000']} />
+			<PerspectiveCamera makeDefault fov={45} far={3000} />
 			{isFly && <SpectatorControls speed={flySpeed} />}
 			{isFollowing && <FollowCamera trainRef={trainRef} resetSignal={resetSignal} />}
 			<ambientLight intensity={1.5} />

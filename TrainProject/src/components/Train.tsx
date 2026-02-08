@@ -21,7 +21,7 @@ export const Train = ({ resetSignal, trainRef }: TrainProps) => {
 	const carriageCount = 4
 	const locomotiveLength = 18.5
 	const carriageLength = 24.65
-	const carriageGap = .0
+	const carriageGap = 0.0
 	const locomotiveHalfLength = locomotiveLength * 0.5
 	const carriageHalfLength = carriageLength * 0.5
 	const carriageSpacing = carriageLength + carriageGap

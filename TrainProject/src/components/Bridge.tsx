@@ -39,7 +39,6 @@ export const Bridge: React.FC<BridgeProps> = ({ startDist = 2200, length = 400, 
 		const endDist = startDist + length // 1. SEGMENTY POMOSTU
 		for (let d = startDist; d <= endDist; d += SEGMENT_LENGTH) {
 			const info = getTrackInfo(d)
-			const nextInfo = getTrackInfo(d + SEGMENT_LENGTH)
 
 			// Kąt nachylenia toru w danym punkcie
 			const h = info.heading || 0
