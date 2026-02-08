@@ -1,5 +1,6 @@
 import { useGameStore } from '../store'
 import { useEffect, useState, useRef } from 'react'
+import { STATION_DEFS } from './worldConfig'
 
 // --- STYLE INŻYNIERSKIE (CSS-in-JS) ---
 const styleSheet = document.createElement('style')
@@ -168,7 +169,6 @@ export const HUD = ({ isLoading }: { isLoading: boolean }) => {
 		velocity,
 		mass,
 		distance,
-		totalDistance,
 		throttle,
 		// brake, // Removed unused variable
 		forceState,
@@ -315,7 +315,8 @@ export const HUD = ({ isLoading }: { isLoading: boolean }) => {
 
 	const speedKmh = Math.abs(velocity * 3.6)
 	const speedDisplay = speedKmh.toFixed(2).padStart(6, '0')
-	const progressPercent = Math.min(100, Math.max(0, (distance / totalDistance) * 100))
+	const finalStopDistance = STATION_DEFS[STATION_DEFS.length - 1]?.dist ?? 1
+	const progressPercent = Math.min(100, Math.max(0, (distance / finalStopDistance) * 100))
 	const isBoarding = trainState === 'BOARDING'
 	const statusColor = trainState === 'MOVING' ? '#4ade80' : trainState === 'ARRIVING' ? '#facc15' : '#fff'
 
